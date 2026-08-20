@@ -1,0 +1,18 @@
+# Real config with credentials -- NEVER commit this
+config.json
+
+# Local runtime data
+intel_monitor.db
+*.session
+*.session-journal
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# OS cruft
+.DS_Store
+Thumbs.db
