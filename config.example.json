@@ -22,7 +22,12 @@
     { "name": "Guardian World", "url": "https://www.theguardian.com/world/rss" },
     { "name": "r/geopolitics", "url": "https://www.reddit.com/r/geopolitics/new/.rss" },
     { "name": "r/worldnews", "url": "https://www.reddit.com/r/worldnews/new/.rss" },
-    { "name": "r/CredibleDefense", "url": "https://www.reddit.com/r/CredibleDefense/new/.rss" }
+    { "name": "r/CredibleDefense", "url": "https://www.reddit.com/r/CredibleDefense/new/.rss" },
+    { "name": "European Parliament", "url": "https://www.europarl.europa.eu/rss/doc/articles/en.xml" },
+    { "name": "ReliefWeb", "url": "https://reliefweb.int/updates/rss.xml" },
+    { "name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml" },
+    { "name": "World Politics Review", "url": "https://www.worldpoliticsreview.com/feed/" },
+    { "name": "Jamestown Foundation", "url": "https://jamestown.org/feed/" }
   ],
 
   "reddit": {
