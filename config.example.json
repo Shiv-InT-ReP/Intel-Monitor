@@ -10,7 +10,9 @@
     "Taiwan", "China", "APAC", "South China Sea",
     "Iran", "Israel", "Middle East",
     "Ukraine", "Russia", "Europe",
-    "India", "Pakistan"
+    "India", "Pakistan", "Afghanistan", "South Asia", "Bangladesh",
+    "Nepal", "Sri Lanka",
+    "Myanmar", "Burma", "Cambodia", "Vietnam", "Thailand", "Southeast Asia"
   ],
   "match_mode": "strict",
   "case_sensitive": false,
@@ -27,7 +29,19 @@
     { "name": "ReliefWeb", "url": "https://reliefweb.int/updates/rss.xml" },
     { "name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml" },
     { "name": "World Politics Review", "url": "https://www.worldpoliticsreview.com/feed/" },
-    { "name": "Jamestown Foundation", "url": "https://jamestown.org/feed/" }
+    { "name": "Jamestown Foundation", "url": "https://jamestown.org/feed/" },
+    { "name": "The Diplomat", "url": "https://thediplomat.com/feed" },
+    { "name": "Long War Journal", "url": "https://www.longwarjournal.org/feed" },
+    { "name": "Defense One", "url": "https://www.defenseone.com/rss/all/" },
+    { "name": "Khaama Press", "url": "https://www.khaama.com/feed" },
+    { "name": "Times of India", "url": "https://timesofindia.indiatimes.com/rssfeedstopstories.cms" },
+    { "name": "Hindustan Times", "url": "https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml" },
+    { "name": "The Hindu International", "url": "https://www.thehindu.com/news/international/feeder/default.rss" },
+    { "name": "RFA - Asia General", "url": "https://www.rfa.org/english/feed/rss2.xml" },
+    { "name": "RFA - Burma/Myanmar", "url": "https://www.rfa.org/english/news/burma_news/rss2.xml" },
+    { "name": "RFA - Cambodia", "url": "https://www.rfa.org/english/news/cambodia_news/rss2.xml" },
+    { "name": "RFA - Vietnam", "url": "https://www.rfa.org/english/news/vietnam_news/rss2.xml" },
+    { "name": "CNA", "url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml" }
   ],
 
   "reddit": {
