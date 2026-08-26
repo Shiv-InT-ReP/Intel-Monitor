@@ -5,6 +5,8 @@ config.json
 intel_monitor.db
 *.session
 *.session-journal
+dashboard.html
+map.html
 
 # Python
 __pycache__/

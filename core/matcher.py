@@ -50,6 +50,24 @@ def build_strict_matcher(keywords: list[str], regions: list[str], case_sensitive
     return match
 
 
+def build_region_only_matcher(regions: list[str], case_sensitive: bool = False):
+    """
+    Region-only matching, no escalation keyword required. Intended for feeds
+    that are ALREADY inherently about a specific topic (e.g. travel advisory
+    feeds are by definition travel-risk content) -- we just need to know
+    WHICH country/region the advisory is about, not whether it's "serious"
+    by news standards.
+    """
+    region_patterns = _build_patterns(regions, case_sensitive)
+
+    def match(text: str):
+        if not text:
+            return []
+        return [term for term, pat in region_patterns if pat.search(text)]
+
+    return match
+
+
 def get_matcher(config: dict):
     """Pick matcher based on config['match_mode']: 'strict' (default) or 'any'."""
     mode = config.get("match_mode", "strict")

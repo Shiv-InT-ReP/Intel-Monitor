@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Intel Monitor — Radar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<style>
+  :root {
+    --bg: #0B1220;
+    --panel: #131B2E;
+    --panel-border: #1F2A44;
+    --text: #E4E8F1;
+    --text-muted: #7C89A6;
+    --text-dim: #4C5876;
+    --sev-low: #5B8DEF;
+    --sev-moderate: #E8A33D;
+    --sev-high: #E8703D;
+    --sev-critical: #E83D5D;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif; -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  header {
+    position: relative; padding: 24px 32px 18px;
+    border-bottom: 1px solid var(--panel-border); overflow: hidden;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    flex-wrap: wrap; gap: 16px;
+  }
+  header::after {
+    content: ""; position: absolute; bottom: 0; left: -100%;
+    width: 100%; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--sev-critical), transparent);
+    animation: sweep 5s linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) { header::after { animation: none; opacity: .4; left: 0; } }
+  @keyframes sweep { 0% { left: -100%; } 100% { left: 100%; } }
+
+  h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  h1 span { color: var(--sev-critical); }
+  .subtitle { margin: 4px 0 0; color: var(--text-muted); font-size: 13px; }
+
+  .legend { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .legend-group { display: flex; flex-direction: column; gap: 6px; }
+  .legend-label { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 2px; }
+  .legend-row { display: flex; gap: 14px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); }
+  .swatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .shape-demo { width: 12px; height: 12px; flex-shrink: 0; border: 2px solid var(--text-muted); }
+  .shape-demo.circle { border-radius: 50%; }
+  .shape-demo.diamond { transform: rotate(45deg); border-radius: 2px; }
+
+  #map { height: calc(100vh - 108px); background: var(--bg); }
+
+  .leaflet-popup-content-wrapper {
+    background: var(--panel); color: var(--text); border: 1px solid var(--panel-border);
+    border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  }
+  .leaflet-popup-tip { background: var(--panel); }
+  .leaflet-popup-content { margin: 14px 16px; font-family: 'IBM Plex Sans', sans-serif; }
+  .leaflet-popup-content-wrapper .leaflet-popup-content {
+    max-height: 280px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .leaflet-popup-content-wrapper .leaflet-popup-content::-webkit-scrollbar { width: 6px; }
+  .leaflet-popup-content-wrapper .leaflet-popup-content::-webkit-scrollbar-track { background: var(--bg); border-radius: 3px; }
+  .leaflet-popup-content-wrapper .leaflet-popup-content::-webkit-scrollbar-thumb { background: var(--panel-border); border-radius: 3px; }
+  .leaflet-popup-content-wrapper .leaflet-popup-content::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+  .popup-region { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: .06em; color: var(--text); text-transform: uppercase; margin-bottom: 6px; }
+  .popup-item { padding: 8px 0; border-top: 1px solid var(--panel-border); }
+  .popup-item:first-of-type { border-top: none; }
+  .popup-item a { color: var(--text); text-decoration: none; font-size: 13px; line-height: 1.4; display: block; }
+  .popup-item a:hover { color: var(--sev-moderate); }
+  .popup-item .meta { font-size: 10px; color: var(--text-dim); margin-top: 3px; display: flex; align-items: center; gap: 6px; }
+  .tier-pill { font-size: 9px; text-transform: uppercase; letter-spacing: .04em; padding: 1px 6px; border-radius: 3px; font-weight: 600; }
+  .leaflet-container { font-family: 'IBM Plex Sans', sans-serif; background: var(--bg) !important; }
+  .leaflet-control-zoom a { background: var(--panel) !important; color: var(--text) !important; border-color: var(--panel-border) !important; }
+  .leaflet-control-attribution { background: rgba(19,27,46,0.8) !important; color: var(--text-dim) !important; }
+  .leaflet-control-attribution a { color: var(--text-muted) !important; }
+
+  .pulse-icon { position: relative; }
+  .pulse-core { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+  .pulse-core.shape-circle { border-radius: 50%; }
+  .pulse-core.shape-diamond { transform: translate(-50%, -50%) rotate(45deg); border-radius: 3px; }
+  .pulse-ring { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border-radius: 50%; animation: pulseRing 2.4s ease-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .pulse-ring { animation: none; opacity: .3; } }
+  @keyframes pulseRing {
+    0% { transform: translate(-50%, -50%) scale(0.6); opacity: 0.8; }
+    100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
+  }
+
+  #errorBox { display: none; padding: 40px; color: var(--sev-moderate); font-family: 'IBM Plex Mono', monospace; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>INTEL <span>RADAR</span></h1>
+    <p class="subtitle">Signal severity by region — click a blip for details</p>
+    <p class="mono" style="font-size:10px;color:var(--text-dim);margin:6px 0 0;" id="genTime"></p>
+    <a href="dashboard.html" class="mono" style="display:inline-block; margin-top:10px; color:var(--sev-moderate); text-decoration:none; border:1px solid var(--panel-border); padding:6px 12px; border-radius:4px; font-size:11px;">← LIST VIEW</a>
+  </div>
+  <div class="legend">
+    <div class="legend-group">
+      <div class="legend-label">Severity (color)</div>
+      <div class="legend-row">
+        <div class="legend-item"><span class="swatch" style="background:var(--sev-low); box-shadow:0 0 6px var(--sev-low);"></span> Low</div>
+        <div class="legend-item"><span class="swatch" style="background:var(--sev-moderate); box-shadow:0 0 6px var(--sev-moderate);"></span> Moderate</div>
+        <div class="legend-item"><span class="swatch" style="background:var(--sev-high); box-shadow:0 0 6px var(--sev-high);"></span> High</div>
+        <div class="legend-item"><span class="swatch" style="background:var(--sev-critical); box-shadow:0 0 8px var(--sev-critical);"></span> Critical</div>
+      </div>
+    </div>
+    <div class="legend-group">
+      <div class="legend-label">Category (shape)</div>
+      <div class="legend-row">
+        <div class="legend-item"><span class="shape-demo circle"></span> Geopolitical</div>
+        <div class="legend-item"><span class="shape-demo diamond"></span> Travel Advisory</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div id="map"></div>
+<div id="errorBox"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+  const SEVERITY_COLORS = { low: '#5B8DEF', moderate: '#E8A33D', high: '#E8703D', critical: '#E83D5D' };
+  const SEVERITY_RANK = { low: 0, moderate: 1, high: 2, critical: 3 };
+
+  const REGION_COORDS = {
+    "Taiwan": [23.7, 121.0], "China": [35.0, 105.0], "Iran": [32.4, 53.7],
+    "Israel": [31.0, 34.8], "Ukraine": [48.4, 31.2], "Russia": [61.5, 105.3],
+    "India": [20.6, 79.0], "Pakistan": [30.4, 69.3], "Afghanistan": [33.9, 67.7],
+    "Bangladesh": [23.7, 90.4], "Nepal": [28.4, 84.1], "Sri Lanka": [7.9, 80.7],
+    "Myanmar": [21.9, 95.9], "Cambodia": [12.6, 104.9], "Vietnam": [14.1, 108.3],
+    "Thailand": [15.9, 100.9], "Middle East": [33.3, 44.4], "Europe": [50.1, 10.4],
+    "South China Sea": [12.0, 114.0]
+  };
+
+  const SAMPLE_ITEMS = __DATA_JSON__;
+
+  if (typeof L === 'undefined') {
+    document.getElementById('map').style.display = 'none';
+    const box = document.getElementById('errorBox');
+    box.style.display = 'block';
+    box.textContent = 'Map library failed to load. This page needs an internet connection. If you are online and still seeing this, an ad blocker or security extension may be blocking cdnjs.cloudflare.com — try disabling it for this page.';
+  } else {
+    const map = L.map('map', {
+      zoomControl: true,
+      attributionControl: true,
+      zoomSnap: 0.5,
+      zoomDelta: 0.5,
+      wheelPxPerZoomLevel: 90,
+      zoomAnimation: true,
+      markerZoomAnimation: true,
+    }).setView([28, 75], 4);
+
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri',
+      maxZoom: 16
+    }).addTo(map);
+
+    const grouped = {};
+    SAMPLE_ITEMS.forEach(item => {
+      if (!grouped[item.region]) grouped[item.region] = [];
+      grouped[item.region].push(item);
+    });
+
+    function buildPulseIcon(count, color, shape) {
+      const size = Math.min(14 + Math.log2(count + 1) * 8, 42);
+      const coreShapeClass = shape === 'diamond' ? 'shape-diamond' : 'shape-circle';
+      const html = `
+        <div class="pulse-icon" style="width:${size * 2}px; height:${size * 2}px;">
+          <div class="pulse-ring" style="width:${size}px; height:${size}px; background:${color};"></div>
+          <div class="pulse-ring" style="width:${size}px; height:${size}px; background:${color}; animation-delay: 1.2s;"></div>
+          <div class="pulse-core ${coreShapeClass}" style="width:${size * 0.5}px; height:${size * 0.5}px; background:${color}; box-shadow: 0 0 12px ${color};"></div>
+        </div>
+      `;
+      return L.divIcon({ html, className: '', iconSize: [size * 2, size * 2] });
+    }
+
+    Object.entries(grouped).forEach(([region, items]) => {
+      const coords = REGION_COORDS[region];
+      if (!coords) return;
+
+      // Marker color = highest severity present at this location
+      const maxSeverity = items.reduce((max, i) =>
+        SEVERITY_RANK[i.severity] > SEVERITY_RANK[max] ? i.severity : max, 'low');
+      const color = SEVERITY_COLORS[maxSeverity];
+
+      // Marker shape = category, using whichever category is more prevalent (or has the highest severity)
+      const geoItems = items.filter(i => i.category === 'geopolitical');
+      const shape = geoItems.length >= items.length - geoItems.length ? 'circle' : 'diamond';
+
+      const icon = buildPulseIcon(items.length, color, shape);
+
+      const sortedItems = [...items].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
+      const scrollHint = items.length > 4
+        ? '<div style="font-size:10px;color:var(--text-dim);text-align:center;padding-top:6px;border-top:1px solid var(--panel-border);margin-top:4px;">scroll for more ↓</div>'
+        : '';
+      const popupHtml = `
+        <div class="popup-region">${region} — ${items.length} signal${items.length > 1 ? 's' : ''}</div>
+        ${sortedItems.map(i => `
+          <div class="popup-item">
+            <a href="${i.url}" target="_blank" rel="noopener">${i.title}</a>
+            <div class="meta">
+              <span class="tier-pill" style="background:${SEVERITY_COLORS[i.severity]}22; color:${SEVERITY_COLORS[i.severity]};">${i.severity}</span>
+              ${i.source} · ${i.category === 'travel' ? 'Travel' : 'Geopolitical'}
+            </div>
+          </div>
+        `).join('')}
+        ${scrollHint}
+      `;
+
+      L.marker(coords, { icon }).addTo(map).bindPopup(popupHtml, {
+        maxWidth: 320,
+        maxHeight: 320,
+        autoPan: true,
+        autoPanPadding: [30, 30],
+      });
+    });
+  }
+</script>
+
+</body>
+</html>
