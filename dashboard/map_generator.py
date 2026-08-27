@@ -30,8 +30,14 @@ def generate_map():
     all_items = get_dashboard_data()
 
     # Only items with a real, plottable region and non-null severity make it onto the map.
+    # Travel advisories are deliberately excluded -- the map is for conflicts,
+    # geopolitical developments, and security incidents. Travel advisories live
+    # exclusively in the dashboard's Travel filter, not on the radar view.
     map_items = []
     for item in all_items:
+        if item.get("category") == "travel":
+            continue
+
         region = item.get("region")
         if not region or region not in KNOWN_REGIONS:
             continue
@@ -43,6 +49,8 @@ def generate_map():
             "region": region,
             "category": item.get("category", "geopolitical"),
             "severity": item.get("severity_tier", "low"),
+            "confidence_tier": item.get("confidence_tier", "unverified"),
+            "confidence_links": item.get("confidence_links", []),
             "title": item.get("title", ""),
             "source": item.get("source", ""),
             "url": item.get("url", "#"),

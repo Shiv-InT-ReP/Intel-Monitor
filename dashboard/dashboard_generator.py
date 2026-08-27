@@ -126,7 +126,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   .stats {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 1px;
     background: var(--panel-border);
     border-bottom: 1px solid var(--panel-border);
@@ -289,6 +289,38 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     border-radius: 3px;
   }
 
+  .sev-badge, .conf-badge {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 3px 7px;
+    border-radius: 3px;
+  }
+  .sev-badge::before { content: "SEV \00b7 "; opacity: 0.65; font-weight: 500; }
+  .conf-badge::before { content: "VERIFY \00b7 "; opacity: 0.65; font-weight: 500; }
+
+  .sev-badge.low { color: #5B8DEF; background: rgba(91, 141, 239, 0.15); }
+  .sev-badge.moderate { color: var(--amber); background: var(--amber-dim); }
+  .sev-badge.high { color: #E8703D; background: rgba(232, 112, 61, 0.15); }
+  .sev-badge.critical { color: #E83D5D; background: rgba(232, 61, 93, 0.15); }
+
+  .conf-badge.corroborated { color: #4FD16B; background: rgba(79, 209, 107, 0.15); }
+  .conf-badge.single-source { color: var(--amber); background: var(--amber-dim); }
+  .conf-badge.unverified { color: var(--text-dim); background: rgba(76, 88, 118, 0.15); }
+
+  .corroboration-links {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .corroboration-links a {
+    color: #4FD16B;
+    text-decoration: none;
+    margin-right: 10px;
+  }
+  .corroboration-links a:hover { text-decoration: underline; }
+
   .item.travel .kw-tag { color: var(--teal); background: var(--teal-dim); }
 
   .item-time {
@@ -349,6 +381,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div class="stat-value" id="statTravel">0</div>
     <div class="stat-label">Travel Advisories</div>
   </div>
+  <div class="stat" style="color: #4C5876;">
+    <div class="stat-value" id="statUnverified" style="color: #4C5876;">0</div>
+    <div class="stat-label">Unverified</div>
+  </div>
   <div class="stat">
     <div class="stat-value" id="stat24h">0</div>
     <div class="stat-label">Last 24 Hours</div>
@@ -365,6 +401,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <button data-cat="geopolitical">Geopolitical</button>
     <button data-cat="travel">Travel</button>
   </div>
+  <div class="segmented" id="confidenceFilter">
+    <button data-conf="all" class="active">All verification</button>
+    <button data-conf="corroborated">Corroborated</button>
+    <button data-conf="single-source">Single-source</button>
+    <button data-conf="unverified">Unverified</button>
+  </div>
   <select id="sourceFilter">
     <option value="all">All sources</option>
   </select>
@@ -379,7 +421,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <script>
   const DATA = __DATA_JSON__;
 
-  const state = { search: "", category: "all", source: "all" };
+  const state = { search: "", category: "all", source: "all", confidence: "all" };
 
   function timeAgo(iso) {
     if (!iso) return "";
@@ -414,6 +456,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     document.getElementById("statTotal").textContent = DATA.length;
     document.getElementById("statGeo").textContent = DATA.filter(d => d.category === "geopolitical").length;
     document.getElementById("statTravel").textContent = DATA.filter(d => d.category === "travel").length;
+    document.getElementById("statUnverified").textContent = DATA.filter(d => (d.confidence_tier || "unverified") === "unverified").length;
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
     document.getElementById("stat24h").textContent = DATA.filter(d => new Date(d.first_seen_at).getTime() > cutoff).length;
   }
@@ -423,6 +466,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
     if (state.category !== "all") {
       items = items.filter(d => d.category === state.category);
+    }
+    if (state.confidence !== "all") {
+      items = items.filter(d => (d.confidence_tier || "unverified") === state.confidence);
     }
     if (state.source !== "all") {
       items = items.filter(d => d.source === state.source);
@@ -446,6 +492,20 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     list.innerHTML = items.map(d => {
       const kws = (d.matched_keywords || "").split(",").filter(Boolean).slice(0, 4);
       const kwHtml = kws.map(k => '<span class="kw-tag">' + escapeHtml(k.trim()) + '</span>').join("");
+
+      const sevTier = d.severity_tier || "low";
+      const sevHtml = '<span class="sev-badge ' + sevTier + '">' + escapeHtml(sevTier) + '</span>';
+
+      const confTier = d.confidence_tier || "unverified";
+      const confHtml = '<span class="conf-badge ' + confTier + '">' + escapeHtml(confTier) + '</span>';
+
+      const links = d.confidence_links || [];
+      const linksHtml = links.length > 0
+        ? '<div class="corroboration-links">Confirmed by: ' +
+          links.map(l => '<a href="' + escapeHtml(l.url) + '" target="_blank" rel="noopener">' + escapeHtml(l.source.replace('rss:', '')) + '</a>').join('') +
+          '</div>'
+        : '';
+
       return `
         <div class="item ${d.category === 'travel' ? 'travel' : ''}">
           <div class="item-bar"></div>
@@ -453,9 +513,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             <a class="item-title" href="${escapeHtml(d.url)}" target="_blank" rel="noopener">${escapeHtml(d.title)}</a>
             <div class="item-meta">
               <span class="source-pill">${escapeHtml(d.source)}</span>
+              ${sevHtml}
+              ${confHtml}
               ${kwHtml}
               <span class="item-time mono">${timeAgo(d.first_seen_at)}</span>
             </div>
+            ${linksHtml}
           </div>
         </div>
       `;
@@ -472,6 +535,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     document.querySelectorAll("#categoryFilter button").forEach(b => b.classList.remove("active"));
     e.target.classList.add("active");
     state.category = e.target.dataset.cat;
+    render();
+  });
+
+  document.getElementById("confidenceFilter").addEventListener("click", e => {
+    if (e.target.tagName !== "BUTTON") return;
+    document.querySelectorAll("#confidenceFilter button").forEach(b => b.classList.remove("active"));
+    e.target.classList.add("active");
+    state.confidence = e.target.dataset.conf;
     render();
   });
 

@@ -104,7 +104,8 @@
 <header>
   <div>
     <h1>INTEL <span>RADAR</span></h1>
-    <p class="subtitle">Signal severity by region — click a blip for details</p>
+    <p class="subtitle">Conflicts, geopolitical developments &amp; security incidents — click a blip for details</p>
+    <p class="mono" style="font-size:10px;color:var(--text-dim);margin:2px 0 0;">Travel advisories live in the dashboard's Travel filter, not here</p>
     <p class="mono" style="font-size:10px;color:var(--text-dim);margin:6px 0 0;" id="genTime"></p>
     <a href="dashboard.html" class="mono" style="display:inline-block; margin-top:10px; color:var(--sev-moderate); text-decoration:none; border:1px solid var(--panel-border); padding:6px 12px; border-radius:4px; font-size:11px;">← LIST VIEW</a>
   </div>
@@ -116,13 +117,6 @@
         <div class="legend-item"><span class="swatch" style="background:var(--sev-moderate); box-shadow:0 0 6px var(--sev-moderate);"></span> Moderate</div>
         <div class="legend-item"><span class="swatch" style="background:var(--sev-high); box-shadow:0 0 6px var(--sev-high);"></span> High</div>
         <div class="legend-item"><span class="swatch" style="background:var(--sev-critical); box-shadow:0 0 8px var(--sev-critical);"></span> Critical</div>
-      </div>
-    </div>
-    <div class="legend-group">
-      <div class="legend-label">Category (shape)</div>
-      <div class="legend-row">
-        <div class="legend-item"><span class="shape-demo circle"></span> Geopolitical</div>
-        <div class="legend-item"><span class="shape-demo diamond"></span> Travel Advisory</div>
       </div>
     </div>
   </div>
@@ -203,21 +197,33 @@
 
       const icon = buildPulseIcon(items.length, color, shape);
 
+      const CONF_COLORS = { corroborated: '#4FD16B', 'single-source': '#E8A33D', unverified: '#4C5876' };
       const sortedItems = [...items].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
       const scrollHint = items.length > 4
         ? '<div style="font-size:10px;color:var(--text-dim);text-align:center;padding-top:6px;border-top:1px solid var(--panel-border);margin-top:4px;">scroll for more ↓</div>'
         : '';
       const popupHtml = `
         <div class="popup-region">${region} — ${items.length} signal${items.length > 1 ? 's' : ''}</div>
-        ${sortedItems.map(i => `
+        ${sortedItems.map(i => {
+          const confTier = i.confidence_tier || 'unverified';
+          const confColor = CONF_COLORS[confTier];
+          const links = i.confidence_links || [];
+          const linksHtml = links.length > 0
+            ? '<div style="margin-top:4px;font-size:10px;">Confirmed by: ' +
+              links.map(l => '<a href="' + l.url + '" target="_blank" rel="noopener" style="color:#4FD16B;margin-right:8px;">' + l.source.replace('rss:', '') + '</a>').join('') +
+              '</div>'
+            : '';
+          return `
           <div class="popup-item">
             <a href="${i.url}" target="_blank" rel="noopener">${i.title}</a>
             <div class="meta">
-              <span class="tier-pill" style="background:${SEVERITY_COLORS[i.severity]}22; color:${SEVERITY_COLORS[i.severity]};">${i.severity}</span>
+              <span class="tier-pill" style="background:${SEVERITY_COLORS[i.severity]}22; color:${SEVERITY_COLORS[i.severity]};">SEV \u00b7 ${i.severity}</span>
+              <span class="tier-pill" style="background:${confColor}22; color:${confColor};">VERIFY \u00b7 ${confTier}</span>
               ${i.source} · ${i.category === 'travel' ? 'Travel' : 'Geopolitical'}
             </div>
+            ${linksHtml}
           </div>
-        `).join('')}
+        `;}).join('')}
         ${scrollHint}
       `;
 

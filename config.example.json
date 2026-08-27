@@ -41,7 +41,13 @@
     { "name": "RFA - Burma/Myanmar", "url": "https://www.rfa.org/english/news/burma_news/rss2.xml" },
     { "name": "RFA - Cambodia", "url": "https://www.rfa.org/english/news/cambodia_news/rss2.xml" },
     { "name": "RFA - Vietnam", "url": "https://www.rfa.org/english/news/vietnam_news/rss2.xml" },
-    { "name": "CNA", "url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml" }
+    { "name": "CNA", "url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml" },
+    { "name": "DW (Deutsche Welle)", "url": "https://rss.dw.com/rdf/rss-en-all" }
+  ],
+
+  "travel_advisory_feeds": [
+    { "name": "US State Dept Travel Advisories", "url": "https://travel.state.gov/_res/rss/TAsTWs.xml" },
+    { "name": "CDC Travel Notices", "url": "https://wwwnc.cdc.gov/travel/rss/notices.xml" }
   ],
 
   "reddit": {
@@ -61,6 +67,13 @@
       "@example_channel_1",
       "@example_channel_2"
     ]
+  },
+
+  "acled": {
+    "enabled": false,
+    "email": "YOUR_ACLED_EMAIL",
+    "password": "YOUR_ACLED_PASSWORD",
+    "lookback_days": 7
   },
 
   "email": {

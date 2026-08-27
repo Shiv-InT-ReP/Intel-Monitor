@@ -5,6 +5,7 @@ never notify on the same story twice, even across separate runs.
 Also serves as the data source for the dashboard.
 """
 import sqlite3
+import json
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,7 +25,10 @@ CREATE TABLE IF NOT EXISTS seen_items (
     category TEXT DEFAULT 'geopolitical',  -- 'geopolitical' or 'travel'
     severity_tier TEXT DEFAULT 'low',      -- 'low' / 'moderate' / 'high' / 'critical'
     severity_score INTEGER DEFAULT 0,
-    region TEXT DEFAULT NULL       -- primary matched region, for map plotting
+    region TEXT DEFAULT NULL,      -- primary matched region, for map plotting
+    confidence_tier TEXT DEFAULT 'unverified',    -- 'unverified' / 'single-source' / 'corroborated'
+    confidence_trusted_count INTEGER DEFAULT 0,   -- count of DISTINCT trusted (RSS/ACLED) outlets confirming this
+    confidence_links TEXT DEFAULT NULL            -- JSON list of {source, url} for trusted corroborating outlets
 );
 CREATE INDEX IF NOT EXISTS idx_seen_items_source ON seen_items(source);
 """
@@ -50,6 +54,9 @@ def init_db():
             ("severity_tier", "TEXT DEFAULT 'low'"),
             ("severity_score", "INTEGER DEFAULT 0"),
             ("region", "TEXT DEFAULT NULL"),
+            ("confidence_tier", "TEXT DEFAULT 'unverified'"),
+            ("confidence_trusted_count", "INTEGER DEFAULT 0"),
+            ("confidence_links", "TEXT DEFAULT NULL"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE seen_items ADD COLUMN {column} {coltype_default}")
@@ -103,13 +110,51 @@ def get_dashboard_data() -> list[dict]:
         rows = conn.execute(
             """
             SELECT source, title, url, published_at, matched_keywords, first_seen_at,
-                   category, severity_tier, severity_score, region
+                   category, severity_tier, severity_score, region,
+                   confidence_tier, confidence_trusted_count, confidence_links
             FROM seen_items
             WHERE notified = 1
             ORDER BY first_seen_at DESC
             """
         ).fetchall()
+        items = [dict(row) for row in rows]
+        for item in items:
+            item["confidence_links"] = json.loads(item["confidence_links"]) if item.get("confidence_links") else []
+        return items
+
+
+def get_recent_items_for_confidence_scoring(days: int = 5) -> list[dict]:
+    """
+    Notified items from the last N days, used for cross-source corroboration
+    scoring. Scoped to a recent window rather than all history -- confidence
+    scoring is only meaningful for events that could still gain corroborating
+    reports, and this keeps the O(n^2) clustering comparison fast even as
+    your total history grows into the thousands.
+    """
+    from datetime import datetime, timezone, timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT item_id, source, title, url, matched_keywords, first_seen_at, region
+            FROM seen_items
+            WHERE notified = 1 AND first_seen_at >= ?
+            """,
+            (cutoff,),
+        ).fetchall()
         return [dict(row) for row in rows]
+
+
+def update_confidence_bulk(scores: dict[str, dict]):
+    """scores: {item_id: {"tier": str, "trusted_count": int, "corroborating_links": [...]}}"""
+    with get_conn() as conn:
+        conn.executemany(
+            "UPDATE seen_items SET confidence_trusted_count = ?, confidence_tier = ?, confidence_links = ? WHERE item_id = ?",
+            [
+                (v["trusted_count"], v["tier"], json.dumps(v["corroborating_links"]), item_id)
+                for item_id, v in scores.items()
+            ],
+        )
 
 
 def get_items_needing_backfill() -> list[dict]:

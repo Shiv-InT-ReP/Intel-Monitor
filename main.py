@@ -18,10 +18,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from core.db import init_db, is_seen, mark_seen
+from core.db import init_db, is_seen, mark_seen, get_recent_items_for_confidence_scoring, update_confidence_bulk
 from core.matcher import get_matcher, build_region_only_matcher
-from core import severity
-from collectors import rss_collector, reddit_collector, telegram_collector
+from core import severity, confidence
+from collectors import rss_collector, reddit_collector, telegram_collector, acled_collector
 from notifier import email_notifier
 from dashboard.dashboard_generator import generate_dashboard
 from dashboard.map_generator import generate_map
@@ -102,11 +102,40 @@ def run():
         new_travel_matches = _process_items(travel_items, travel_matcher, category="travel", regions=config["regions"])
         print(f"[*] {len(new_travel_matches)} new travel advisory item(s) matched.")
 
+    # --- ACLED verified conflict data (already-structured, no keyword matching needed) ---
+    new_acled_matches = []
+    if config.get("acled", {}).get("enabled"):
+        print("[*] Fetching ACLED conflict data...")
+        acled_items = acled_collector.collect(
+            config["acled"], regions=config["regions"],
+            lookback_days=config["acled"].get("lookback_days", 7)
+        )
+        print(f"[*] Fetched {len(acled_items)} total ACLED event(s) (after event-type/fatality filtering).")
+        for item in acled_items:
+            if is_seen(item["item_id"]):
+                continue
+            score, tier = severity.score_acled(item["_acled_event_type"], item["_acled_fatalities"])
+            item["matched_keywords"] = [item["_acled_country"], item["_acled_event_type"]]
+            mark_seen(item, notified=True, category="geopolitical",
+                      severity_tier=tier, severity_score=score, region=item["_acled_country"])
+            new_acled_matches.append(item)
+        print(f"[*] {len(new_acled_matches)} new ACLED event(s) added.")
+
     # --- Notify ---
-    if new_geo_matches or new_travel_matches:
-        email_notifier.send_digest(config["email"], new_geo_matches, new_travel_matches)
+    if new_geo_matches or new_travel_matches or new_acled_matches:
+        email_notifier.send_digest(config["email"], new_geo_matches + new_acled_matches, new_travel_matches)
     else:
         print("[*] Nothing new to notify.")
+
+    # --- Cross-source confidence scoring against TRUSTED sources only (not raw repetition) ---
+    print("[*] Scoring cross-source confidence for recent items...")
+    recent_items = get_recent_items_for_confidence_scoring(days=5)
+    confidence_scores = confidence.score_confidence(recent_items)
+    update_confidence_bulk(confidence_scores)
+    corroborated_count = sum(1 for v in confidence_scores.values() if v["tier"] == "corroborated")
+    unverified_count = sum(1 for v in confidence_scores.values() if v["tier"] == "unverified")
+    print(f"[*] Confidence scored for {len(confidence_scores)} recent item(s): "
+          f"{corroborated_count} corroborated, {unverified_count} unverified.")
 
     # --- Refresh dashboard and map (always, so they reflect full history even on quiet runs) ---
     generate_dashboard()
