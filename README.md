@@ -1,97 +1,145 @@
 # Intel Monitor
 
-A lightweight OSINT aggregation and alerting pipeline that consolidates
-fragmented open-source signals -- news, Reddit, and Telegram -- into a
-single filtered, deduplicated digest.
+A Python OSINT aggregation and alerting pipeline that consolidates
+fragmented open-source intelligence -- news, government advisories,
+Telegram, Reddit, verified conflict data, and real-time disaster feeds --
+into a single filtered, severity-scored, cross-source-verified digest and
+an interactive situation-board map.
 
-Built to solve a real problem in intelligence/OSINT monitoring workflows:
-relevant signal is scattered across many platforms, each with its own
-noise floor. This pipeline centralizes collection, applies rule-based
-relevance triage, and delivers only what matters.
+## What it does
 
-## Why this exists
-
-Manually checking a dozen news feeds, subreddits, and Telegram channels
-for geopolitical/security-relevant developments doesn't scale. This
-pipeline runs unattended on a schedule, remembers what it's already seen,
-and only surfaces genuinely new, relevant items -- cutting review time
-from "read everything" to "read the digest."
+- Pulls from 30+ RSS sources (including local/regional outlets across
+  South Asia, Middle East, and Eurasia), curated OSINT Telegram channels,
+  subreddits, USGS earthquake data, and GDACS cyclone/flood alerts
+- Filters using strict region+keyword co-occurrence matching (not naive
+  keyword matching, which is nearly useless at scale)
+- Scores every matched item by severity (low/moderate/high/critical) using
+  weighted keyword logic, government advisory levels, or event-specific
+  scoring (magnitude for earthquakes, fatalities for conflict events)
+- Cross-references matched items against CREDIBLE sources only (not just
+  repetition) to classify confidence as unverified / single-source /
+  corroborated -- resistant to echo chambers, since raw repetition from
+  low-trust sources never counts as verification on its own
+- Flags source ownership/funding structure transparently (state-funded,
+  state-linked, or state propaganda) -- with a hard safeguard so
+  propaganda outlets can never manufacture false "corroborated" status,
+  even by agreeing with each other
+- Plots conflict/security events and natural disasters separately on an
+  interactive radar map, with city-level precision where a specific place
+  can be extracted from the text (via spaCy NER + free geocoding)
+- Delivers a two-section email digest (geopolitical alerts + travel
+  advisories) and a searchable, filterable dashboard
 
 ## Architecture
 
-- `collectors/` -- Pull raw items from each source (RSS, Reddit via
-  public RSS, Telegram via personal account)
-- `core/matcher.py` -- Relevance filtering: strict AND-logic between
-  region terms and escalation-language keywords
-- `core/db.py` -- SQLite-backed dedup store; every item is fingerprinted
-  so nothing is ever surfaced twice
-- `notifier/` -- Digest delivery (currently email; extensible)
-- `main.py` -- Orchestrator: collect -> dedupe -> match -> notify
+    main.py                     Orchestrator: collect -> dedupe -> match ->
+                                 score -> verify -> notify -> render
+
+    collectors/
+      rss_collector.py           RSS/Atom feeds (news, think tanks, IGOs,
+                                  government advisories, GDACS)
+      reddit_collector.py        Public subreddit RSS (no API needed --
+                                  Reddit's official API now requires
+                                  approval we couldn't get)
+      telegram_collector.py      Personal-account Telegram channel reading
+      list_my_channels.py        One-time helper: lists your Telegram
+                                  channels + completes login
+      usgs_collector.py          USGS real-time earthquake GeoJSON feed
+      acled_collector.py         ACLED conflict data (built, but DISABLED --
+                                  ACLED denied elevated API access citing
+                                  their EULA's redistribution terms)
+      gdelt_collector.py         Targeted GDELT verification for high-severity
+                                  unverified items (DISABLED by default --
+                                  persistent connectivity issues from this
+                                  network; code kept in case that changes)
+
+    core/
+      matcher.py                 Strict region+keyword AND-matching
+      severity.py                Weighted severity scoring per source type
+      confidence.py              Cross-source corroboration against
+                                  CREDIBLE sources only (echo-chamber resistant)
+      source_reliability.py      Ownership/funding transparency + hard
+                                  safeguard against propaganda "corroboration"
+      geocoding.py                spaCy NER + free Nominatim geocoding for
+                                  city-level map precision
+      db.py                       SQLite dedup store + all query/update logic
+      ai_dedup.py                 AI-powered cluster synthesis for the email
+                                  digest (built, requires your own Anthropic
+                                  API key to activate -- currently inactive)
+
+    dashboard/
+      dashboard_generator.py       Searchable/filterable list view
+      map_generator.py             Radar map data prep
+      map_template.html            The map itself (severity color, conflict/
+                                  disaster shape, confidence badges, city pins)
+
+    notifier/
+      email_notifier.py            Two-section digest email
+
+    backfill_severity.py           One-time script: computes region/severity
+                                  for historical items matched before that
+                                  tracking existed
 
 ## Design decisions worth noting
 
-- **Strict AND-matching, not OR.** A naive keyword filter (match if
-  ANY term appears) is nearly useless at scale -- "Europe" or "sanctions"
-  alone appear constantly with zero operational relevance. This pipeline
-  requires a REGION term AND an ESCALATION-language term to co-occur in
-  the same item, which empirically cut false positives by roughly 95%
-  (58 -> 2 matches on identical source data in testing) while still
-  catching genuine breaking developments.
+- **Strict AND-matching, not OR.** A region term AND an escalation keyword
+  must co-occur -- cuts false positives by roughly 95% versus naive
+  keyword-only matching.
 
-- **Reddit via public RSS, not the official API.** Reddit's API access
-  policy tightened significantly in 2025/2026, gating new developer
-  access behind manual approval. Public subreddit RSS feeds
-  (`/r/subreddit/new/.rss`) require no authentication and deliver the
-  same data for this use case -- a pragmatic workaround that also means
-  one less credential to manage.
+- **Confidence is about CREDIBILITY, not repetition.** Four Telegram
+  channels reposting the same unverified rumor stay "unverified." Only
+  edited, accountable outlets count as trusted corroboration.
 
-- **Telegram via personal account (Telethon), not a bot.** Bots cannot
-  read channel history unless granted admin rights on every channel.
-  Reading public channels as a normal user, via the official (free)
-  Telegram API, avoids that limitation entirely.
+- **Source ownership is disclosed, not silently judged.** Rather than
+  unilaterally excluding "biased" sources, every source's funding/ownership
+  structure is surfaced as a transparency tag. The one hard exception:
+  outlets that are direct propaganda arms of authoritarian states (RT,
+  Xinhua, CGTN, Press TV, etc.) are structurally barred from ever counting
+  as trusted corroboration, since letting them "verify" each other would
+  break the entire point of the confidence system.
 
-- **SQLite dedup, not in-memory state.** The pipeline is designed to run
-  as a scheduled task (cron / Windows Task Scheduler) with no persistent
-  process -- state must survive between runs. A simple `item_id` hash
-  (source + URL, or source + message ID) makes re-notification
-  structurally impossible rather than relying on time-window heuristics.
+- **Travel advisories and the conflict map are deliberately separate.**
+  Travel advisories live only in the dashboard's Travel filter; the map is
+  reserved for conflicts, geopolitical developments, and security/disaster
+  incidents.
+
+- **City-level map precision is opportunistic, not guaranteed.** spaCy's
+  free local NER model catches most well-known cities but will miss some.
+  When it can't find a specific place, items fall back to the
+  country-centroid pin.
+
+- **ACLED and GDELT are built but disabled**, for two different reasons:
+  ACLED explicitly denied elevated API access citing their EULA's
+  data-redistribution terms -- don't attempt to work around this. GDELT's
+  targeted verification queries failed consistently from this specific
+  network (other free APIs like USGS/GDACS/Nominatim work fine, so it's
+  isolated to GDELT's servers) -- worth retrying from a different network.
 
 ## Stack
 
-Python 3, `feedparser` (RSS), `telethon` (Telegram, async), SQLite,
-SMTP (email digest delivery).
+Python 3, feedparser, telethon, requests, spacy (+ en_core_web_sm
+model), SQLite, SMTP.
 
 ## Setup
 
-1. `pip install -r requirements.txt`
-2. Copy `config.example.json` to `config.json` and fill in your own
-   values. `config.json` is gitignored -- never commit real credentials.
-3. For Telegram: get a free `api_id`/`api_hash` from my.telegram.org,
-   then run `python collectors/list_my_channels.py` once to complete
-   interactive login and list channels you can monitor.
-4. For email: use a Gmail App Password (myaccount.google.com/apppasswords,
-   requires 2-Step Verification), not your normal password.
-5. `python main.py` to run once, or schedule it (see below).
+1. Install dependencies: pip install -r requirements.txt
+2. Download the language model: python -m spacy download en_core_web_sm
+3. Copy config.example.json to config.json, fill in your own values.
+   config.json is gitignored -- never commit real credentials.
+4. For Telegram: get a free api_id/api_hash from my.telegram.org, then
+   run python collectors/list_my_channels.py once to complete login and
+   list channels you can monitor.
+5. For email: use a Gmail App Password (myaccount.google.com/apppasswords).
+6. Run python main.py once, or schedule it (see below).
 
 ## Scheduling
 
-Windows (Task Scheduler via PowerShell), run once to register:
+Windows (Task Scheduler via PowerShell):
 
     $pythonPath = (Get-Command python).Source
     $action = New-ScheduledTaskAction -Execute $pythonPath -Argument "main.py" -WorkingDirectory (Get-Location).Path
     $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Hours 6) -RepetitionDuration (New-TimeSpan -Days 3650)
-    Register-ScheduledTask -TaskName "IntelMonitor" -Action $action -Trigger $trigger -Description "Fragmented-source intel monitor"
-
-Linux/Mac: standard cron entry pointing at `main.py`.
-
-## Possible extensions
-
-- AI-assisted relevance scoring (swap the rule-based matcher for an LLM
-  call) for nuance beyond keyword co-occurrence
-- Bluesky as an additional source (free, open AT Protocol API -- a
-  viable alternative now that X's API requires paid access)
-- Web dashboard instead of/alongside email digest
-- Configurable per-region keyword sets rather than one global list
+    Register-ScheduledTask -TaskName "IntelMonitor" -Action $action -Trigger $trigger
 
 ## License
 

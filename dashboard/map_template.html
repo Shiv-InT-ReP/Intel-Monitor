@@ -55,6 +55,12 @@
   .shape-demo { width: 12px; height: 12px; flex-shrink: 0; border: 2px solid var(--text-muted); }
   .shape-demo.circle { border-radius: 50%; }
   .shape-demo.diamond { transform: rotate(45deg); border-radius: 2px; }
+  .shape-demo.triangle {
+    width: 0; height: 0; border: none;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-bottom: 10px solid var(--text-muted);
+  }
 
   #map { height: calc(100vh - 108px); background: var(--bg); }
 
@@ -89,6 +95,16 @@
   .pulse-core { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
   .pulse-core.shape-circle { border-radius: 50%; }
   .pulse-core.shape-diamond { transform: translate(-50%, -50%) rotate(45deg); border-radius: 3px; }
+  .pulse-core.shape-triangle {
+    background: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    box-shadow: none !important;
+    border-left: var(--tri-size) solid transparent;
+    border-right: var(--tri-size) solid transparent;
+    border-bottom: calc(var(--tri-size) * 1.73) solid var(--tri-color);
+    filter: drop-shadow(0 0 8px var(--tri-color));
+  }
   .pulse-ring { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); border-radius: 50%; animation: pulseRing 2.4s ease-out infinite; }
   @media (prefers-reduced-motion: reduce) { .pulse-ring { animation: none; opacity: .3; } }
   @keyframes pulseRing {
@@ -117,6 +133,13 @@
         <div class="legend-item"><span class="swatch" style="background:var(--sev-moderate); box-shadow:0 0 6px var(--sev-moderate);"></span> Moderate</div>
         <div class="legend-item"><span class="swatch" style="background:var(--sev-high); box-shadow:0 0 6px var(--sev-high);"></span> High</div>
         <div class="legend-item"><span class="swatch" style="background:var(--sev-critical); box-shadow:0 0 8px var(--sev-critical);"></span> Critical</div>
+      </div>
+    </div>
+    <div class="legend-group">
+      <div class="legend-label">Type (shape)</div>
+      <div class="legend-row">
+        <div class="legend-item"><span class="shape-demo circle"></span> Conflict / Security</div>
+        <div class="legend-item"><span class="shape-demo triangle"></span> Natural Disaster</div>
       </div>
     </div>
   </div>
@@ -163,28 +186,41 @@
       maxZoom: 16
     }).addTo(map);
 
+    // Group by CITY when we have precise coordinates, otherwise fall back to
+    // the country-level region blip. This is what makes city-level items show
+    // their own precise pin instead of being lumped into the country marker.
     const grouped = {};
     SAMPLE_ITEMS.forEach(item => {
-      if (!grouped[item.region]) grouped[item.region] = [];
-      grouped[item.region].push(item);
+      const key = item.city_name ? ('city:' + item.city_name) : ('region:' + item.region);
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(item);
     });
 
     function buildPulseIcon(count, color, shape) {
       const size = Math.min(14 + Math.log2(count + 1) * 8, 42);
-      const coreShapeClass = shape === 'diamond' ? 'shape-diamond' : 'shape-circle';
+      const coreShapeClass = shape === 'triangle' ? 'shape-triangle' : 'shape-circle';
+      // Triangle uses CSS border-triangle technique, which needs different
+      // sizing variables than the width/height approach circle/diamond use.
+      const coreStyle = shape === 'triangle'
+        ? `--tri-size:${size * 0.35}px; --tri-color:${color};`
+        : `width:${size * 0.5}px; height:${size * 0.5}px; background:${color}; box-shadow: 0 0 12px ${color};`;
       const html = `
         <div class="pulse-icon" style="width:${size * 2}px; height:${size * 2}px;">
           <div class="pulse-ring" style="width:${size}px; height:${size}px; background:${color};"></div>
           <div class="pulse-ring" style="width:${size}px; height:${size}px; background:${color}; animation-delay: 1.2s;"></div>
-          <div class="pulse-core ${coreShapeClass}" style="width:${size * 0.5}px; height:${size * 0.5}px; background:${color}; box-shadow: 0 0 12px ${color};"></div>
+          <div class="pulse-core ${coreShapeClass}" style="${coreStyle}"></div>
         </div>
       `;
       return L.divIcon({ html, className: '', iconSize: [size * 2, size * 2] });
     }
 
-    Object.entries(grouped).forEach(([region, items]) => {
-      const coords = REGION_COORDS[region];
-      if (!coords) return;
+    Object.entries(grouped).forEach(([key, items]) => {
+      const isCity = key.startsWith('city:');
+      const locationLabel = isCity ? (items[0].city_name + ', ' + items[0].region) : items[0].region;
+      const coords = isCity
+        ? [items[0].city_lat, items[0].city_lon]
+        : REGION_COORDS[items[0].region];
+      if (!coords || coords[0] == null || coords[1] == null) return;
 
       // Marker color = highest severity present at this location
       const maxSeverity = items.reduce((max, i) =>
@@ -192,18 +228,26 @@
       const color = SEVERITY_COLORS[maxSeverity];
 
       // Marker shape = category, using whichever category is more prevalent (or has the highest severity)
-      const geoItems = items.filter(i => i.category === 'geopolitical');
-      const shape = geoItems.length >= items.length - geoItems.length ? 'circle' : 'diamond';
+      // Marker shape = domain (conflict vs natural disaster), using whichever
+      // is more prevalent at this location if mixed
+      const disasterItems = items.filter(i => i.domain === 'disaster');
+      const shape = disasterItems.length > items.length - disasterItems.length ? 'triangle' : 'circle';
 
-      const icon = buildPulseIcon(items.length, color, shape);
+      // City-level pins get a slightly smaller base size than country blips,
+      // since they represent one specific place rather than an aggregated region.
+      const icon = buildPulseIcon(isCity ? Math.max(items.length, 1.5) : items.length, color, shape);
 
       const CONF_COLORS = { corroborated: '#4FD16B', 'single-source': '#E8A33D', unverified: '#4C5876' };
       const sortedItems = [...items].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
       const scrollHint = items.length > 4
         ? '<div style="font-size:10px;color:var(--text-dim);text-align:center;padding-top:6px;border-top:1px solid var(--panel-border);margin-top:4px;">scroll for more ↓</div>'
         : '';
+      const precisionNote = isCity
+        ? '<div style="font-size:9px;color:var(--text-dim);margin-top:2px;">📍 precise location</div>'
+        : '';
       const popupHtml = `
-        <div class="popup-region">${region} — ${items.length} signal${items.length > 1 ? 's' : ''}</div>
+        <div class="popup-region">${locationLabel} — ${items.length} signal${items.length > 1 ? 's' : ''}</div>
+        ${precisionNote}
         ${sortedItems.map(i => {
           const confTier = i.confidence_tier || 'unverified';
           const confColor = CONF_COLORS[confTier];

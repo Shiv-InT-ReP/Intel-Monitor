@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS seen_items (
     severity_tier TEXT DEFAULT 'low',      -- 'low' / 'moderate' / 'high' / 'critical'
     severity_score INTEGER DEFAULT 0,
     region TEXT DEFAULT NULL,      -- primary matched region, for map plotting
+    city_name TEXT DEFAULT NULL,   -- specific city/place if extracted, for precise map plotting
+    city_lat REAL DEFAULT NULL,
+    city_lon REAL DEFAULT NULL,
+    domain TEXT DEFAULT 'conflict',  -- 'conflict' or 'disaster', for map marker shape
     confidence_tier TEXT DEFAULT 'unverified',    -- 'unverified' / 'single-source' / 'corroborated'
     confidence_trusted_count INTEGER DEFAULT 0,   -- count of DISTINCT trusted (RSS/ACLED) outlets confirming this
     confidence_links TEXT DEFAULT NULL            -- JSON list of {source, url} for trusted corroborating outlets
@@ -54,6 +58,10 @@ def init_db():
             ("severity_tier", "TEXT DEFAULT 'low'"),
             ("severity_score", "INTEGER DEFAULT 0"),
             ("region", "TEXT DEFAULT NULL"),
+            ("city_name", "TEXT DEFAULT NULL"),
+            ("city_lat", "REAL DEFAULT NULL"),
+            ("city_lon", "REAL DEFAULT NULL"),
+            ("domain", "TEXT DEFAULT 'conflict'"),
             ("confidence_tier", "TEXT DEFAULT 'unverified'"),
             ("confidence_trusted_count", "INTEGER DEFAULT 0"),
             ("confidence_links", "TEXT DEFAULT NULL"),
@@ -73,7 +81,9 @@ def is_seen(item_id: str) -> bool:
 
 
 def mark_seen(item: dict, notified: bool, category: str = "geopolitical",
-              severity_tier: str = "low", severity_score: int = 0, region: str = None):
+              severity_tier: str = "low", severity_score: int = 0, region: str = None,
+              city_name: str = None, city_lat: float = None, city_lon: float = None,
+              domain: str = "conflict"):
     keywords = item.get("matched_keywords", [])
     if isinstance(keywords, list):
         keywords = ",".join(keywords)
@@ -83,9 +93,9 @@ def mark_seen(item: dict, notified: bool, category: str = "geopolitical",
             """
             INSERT OR IGNORE INTO seen_items
                 (item_id, source, title, url, published_at, matched_keywords, first_seen_at,
-                 notified, category, severity_tier, severity_score, region)
+                 notified, category, severity_tier, severity_score, region, city_name, city_lat, city_lon, domain)
             VALUES (:item_id, :source, :title, :url, :published_at, :matched_keywords, :first_seen_at,
-                    :notified, :category, :severity_tier, :severity_score, :region)
+                    :notified, :category, :severity_tier, :severity_score, :region, :city_name, :city_lat, :city_lon, :domain)
             """,
             {
                 "item_id": item["item_id"],
@@ -100,6 +110,10 @@ def mark_seen(item: dict, notified: bool, category: str = "geopolitical",
                 "severity_tier": severity_tier,
                 "severity_score": severity_score,
                 "region": region,
+                "city_name": city_name,
+                "city_lat": city_lat,
+                "city_lon": city_lon,
+                "domain": domain,
             },
         )
 
@@ -111,7 +125,8 @@ def get_dashboard_data() -> list[dict]:
             """
             SELECT source, title, url, published_at, matched_keywords, first_seen_at,
                    category, severity_tier, severity_score, region,
-                   confidence_tier, confidence_trusted_count, confidence_links
+                   confidence_tier, confidence_trusted_count, confidence_links,
+                   city_name, city_lat, city_lon, domain
             FROM seen_items
             WHERE notified = 1
             ORDER BY first_seen_at DESC
@@ -157,7 +172,86 @@ def update_confidence_bulk(scores: dict[str, dict]):
         )
 
 
-def get_items_needing_backfill() -> list[dict]:
+def get_items_needing_verification(limit: int = 10, hours: int = 48) -> list[dict]:
+    """
+    Finds recent, high-severity items that are still 'unverified' -- good
+    candidates for targeted GDELT verification. Capped at `limit` to keep
+    the number of GDELT queries per run small and reliable.
+    """
+    from datetime import datetime, timezone, timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT item_id, source, region, matched_keywords, confidence_links
+            FROM seen_items
+            WHERE notified = 1 AND confidence_tier = 'unverified'
+              AND severity_tier IN ('high', 'critical')
+              AND region IS NOT NULL
+              AND first_seen_at >= ?
+            ORDER BY first_seen_at DESC
+            LIMIT ?
+            """,
+            (cutoff, limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def apply_gdelt_verification(item_id: str, new_sources: list[dict], own_source: str):
+    """
+    Updates a single item's confidence based on new corroborating sources
+    found via targeted GDELT verification. Combines with any existing
+    corroboration links rather than overwriting.
+    """
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT confidence_links FROM seen_items WHERE item_id = ?", (item_id,)
+        ).fetchone()
+        existing_links = json.loads(row["confidence_links"]) if row and row["confidence_links"] else []
+
+        all_links = existing_links + new_sources
+        seen_sources = set()
+        deduped_links = []
+        for link in all_links:
+            if link["source"] not in seen_sources:
+                seen_sources.add(link["source"])
+                deduped_links.append(link)
+
+        trusted_count = len(seen_sources)
+        if own_source.startswith(("rss:", "acled", "gdelt:")) and own_source not in seen_sources:
+            trusted_count += 1
+
+        tier = "corroborated" if trusted_count >= 2 else "single-source" if trusted_count == 1 else "unverified"
+
+        conn.execute(
+            "UPDATE seen_items SET confidence_tier = ?, confidence_trusted_count = ?, confidence_links = ? WHERE item_id = ?",
+            (tier, trusted_count, json.dumps(deduped_links), item_id),
+        )
+        return tier, trusted_count
+
+
+def get_prior_related_count(region: str, keywords: list[str], days: int = 5) -> int:
+    """
+    Counts how many items in recent history relate to this region and share
+    at least one keyword -- used for AI dedup's delta-awareness (is this a
+    brand-new development or a continuation of an ongoing situation).
+    """
+    if not region:
+        return 0
+    from datetime import datetime, timezone, timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT matched_keywords FROM seen_items WHERE notified = 1 AND region = ? AND first_seen_at >= ?",
+            (region, cutoff),
+        ).fetchall()
+    keyword_set = set(keywords)
+    count = 0
+    for row in rows:
+        stored_kws = set((row["matched_keywords"] or "").split(","))
+        if stored_kws & keyword_set:
+            count += 1
+    return count
     """Notified items where region is still NULL -- i.e. matched before
     severity/region tracking existed. Used by the one-time backfill script."""
     with get_conn() as conn:

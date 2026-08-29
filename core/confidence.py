@@ -22,6 +22,7 @@ here -- it doesn't need to be perfect, just directionally useful.
 """
 import difflib
 from datetime import datetime, timezone, timedelta
+from core.source_reliability import is_propaganda_blocked
 
 TITLE_SIMILARITY_THRESHOLD = 0.5
 TIME_WINDOW_HOURS = 48
@@ -30,11 +31,13 @@ TIME_WINDOW_HOURS = 48
 # source-string prefix). Untrusted = raw social/chatter aggregation, which
 # can still be useful signal but should never count as "verification" on
 # its own, however many times it's repeated.
-TRUSTED_PREFIXES = ("rss:", "acled")
+TRUSTED_PREFIXES = ("rss:", "acled", "gdelt:")
 # telegram: and reddit: are deliberately NOT in this list.
 
 
 def _is_trusted(source: str) -> bool:
+    if is_propaganda_blocked(source):
+        return False  # state propaganda never counts as trusted corroboration, even if RSS-sourced
     return source.startswith(TRUSTED_PREFIXES)
 
 

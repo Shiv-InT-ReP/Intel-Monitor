@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 from core.db import get_dashboard_data
+from core.source_reliability import get_ownership_tag
 
 DASHBOARD_PATH = Path(__file__).resolve().parent.parent / "dashboard.html"
 
@@ -281,6 +282,19 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     border-radius: 3px;
   }
 
+  .ownership-tag {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    cursor: help;
+  }
+  .ownership-tag.state-funded { color: #E8A33D; background: rgba(232, 163, 61, 0.15); }
+  .ownership-tag.state-linked { color: #E8A33D; background: rgba(232, 163, 61, 0.15); }
+  .ownership-tag.state-propaganda { color: #E83D5D; background: rgba(232, 61, 93, 0.2); }
+
   .kw-tag {
     font-size: 11px;
     color: var(--amber);
@@ -499,6 +513,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       const confTier = d.confidence_tier || "unverified";
       const confHtml = '<span class="conf-badge ' + confTier + '">' + escapeHtml(confTier) + '</span>';
 
+      const ownership = d.ownership_tag;
+      const ownershipHtml = ownership
+        ? '<span class="ownership-tag ' + ownership.tag.toLowerCase().replace(/ /g, '-') + '" title="' + escapeHtml(ownership.note) + '">' + escapeHtml(ownership.tag) + '</span>'
+        : '';
+
       const links = d.confidence_links || [];
       const linksHtml = links.length > 0
         ? '<div class="corroboration-links">Confirmed by: ' +
@@ -513,6 +532,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             <a class="item-title" href="${escapeHtml(d.url)}" target="_blank" rel="noopener">${escapeHtml(d.title)}</a>
             <div class="item-meta">
               <span class="source-pill">${escapeHtml(d.source)}</span>
+              ${ownershipHtml}
               ${sevHtml}
               ${confHtml}
               ${kwHtml}
@@ -565,6 +585,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
 def generate_dashboard():
     items = get_dashboard_data()
+    for item in items:
+        item["ownership_tag"] = get_ownership_tag(item.get("source", ""))
     data_json = json.dumps(items)
     # Guard against any matched item's title containing a literal "</script"
     # (e.g. quoting HTML/code in a headline) which would otherwise prematurely

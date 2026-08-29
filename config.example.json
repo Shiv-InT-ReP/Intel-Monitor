@@ -4,7 +4,16 @@
     "explosion", "killed", "casualties", "coup", "martial law", "evacuate",
     "mobiliz", "blockade", "clash", "ceasefire collapse", "nuclear test",
     "military drill", "warship", "patrol", "fighter jet", "incursion",
-    "troop", "combat readiness", "naval", "airspace violation"
+    "troop", "combat readiness", "naval", "airspace violation",
+    "suicide bombing", "IED", "hostage", "ambush", "insurgent", "militant",
+    "sabotage", "kidnap", "terrorist attack",
+    "assassination", "coup attempt", "state of emergency", "curfew",
+    "crackdown", "mass arrest", "political violence",
+    "cyberattack", "critical infrastructure hack", "data breach",
+    "sanctions", "expel diplomat", "arms deal", "weapons transfer", "trade war", "embassy attack",
+    "seized vessel", "piracy", "territorial waters violation",
+    "protest", "bomb blast", "shooting", "fire incident", "stabbing", "bomb",
+    "earthquake", "storm", "tsunami", "cyclone"
   ],
   "regions": [
     "Taiwan", "China", "APAC", "South China Sea",
@@ -16,7 +25,6 @@
   ],
   "match_mode": "strict",
   "case_sensitive": false,
-
   "rss_feeds": [
     { "name": "BBC World", "url": "https://feeds.bbci.co.uk/news/world/rss.xml" },
     { "name": "Al Jazeera", "url": "https://www.aljazeera.com/xml/rss/all.xml" },
@@ -42,14 +50,18 @@
     { "name": "RFA - Cambodia", "url": "https://www.rfa.org/english/news/cambodia_news/rss2.xml" },
     { "name": "RFA - Vietnam", "url": "https://www.rfa.org/english/news/vietnam_news/rss2.xml" },
     { "name": "CNA", "url": "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml" },
-    { "name": "DW (Deutsche Welle)", "url": "https://rss.dw.com/rdf/rss-en-all" }
+    { "name": "DW (Deutsche Welle)", "url": "https://rss.dw.com/rdf/rss-en-all" },
+    { "name": "GDACS Cyclones", "url": "https://www.gdacs.org/xml/rss_tc_7d.xml" },
+    { "name": "GDACS Floods", "url": "https://www.gdacs.org/xml/rss_fl_7d.xml" },
+    { "name": "Times of Israel", "url": "https://www.timesofisrael.com/feed/" },
+    { "name": "The Daily Star (Bangladesh)", "url": "https://www.thedailystar.net/frontpage/rss.xml" },
+    { "name": "The Nation (Pakistan)", "url": "https://www.nation.com.pk/rss/newspaper" },
+    { "name": "Moscow Times", "url": "https://www.themoscowtimes.com/rss/news" }
   ],
-
   "travel_advisory_feeds": [
     { "name": "US State Dept Travel Advisories", "url": "https://travel.state.gov/_res/rss/TAsTWs.xml" },
     { "name": "CDC Travel Notices", "url": "https://wwwnc.cdc.gov/travel/rss/notices.xml" }
   ],
-
   "reddit": {
     "enabled": false,
     "client_id": "YOUR_REDDIT_CLIENT_ID",
@@ -57,25 +69,18 @@
     "user_agent": "intel-monitor-script by u/yourusername",
     "subreddits": ["geopolitics", "worldnews", "CredibleDefense"]
   },
-
   "telegram": {
     "enabled": false,
     "api_id": "YOUR_TELEGRAM_API_ID",
     "api_hash": "YOUR_TELEGRAM_API_HASH",
     "session_name": "intel_monitor_session",
-    "channels": [
-      "@example_channel_1",
-      "@example_channel_2"
-    ]
+    "channels": ["@example_channel_1", "@example_channel_2"]
   },
-
-  "acled": {
-    "enabled": false,
-    "email": "YOUR_ACLED_EMAIL",
-    "password": "YOUR_ACLED_PASSWORD",
-    "lookback_days": 7
-  },
-
+  "acled": { "enabled": false, "email": "YOUR_ACLED_EMAIL", "password": "YOUR_ACLED_PASSWORD", "lookback_days": 7 },
+  "geocoding": { "enabled": true },
+  "usgs": { "enabled": true, "min_magnitude": "4.5", "period": "day" },
+  "gdelt": { "enabled": false, "verify_limit": 10, "verify_lookback_hours": 48 },
+  "ai_dedup": { "enabled": false, "api_key": "YOUR_ANTHROPIC_API_KEY", "model": "claude-haiku-4-5-20251001" },
   "email": {
     "enabled": true,
     "smtp_host": "smtp.gmail.com",
@@ -85,6 +90,5 @@
     "recipient_email": "YOUR_EMAIL@gmail.com",
     "subject_prefix": "[Intel Monitor]"
   },
-
   "lookback_hours_first_run": 24
 }

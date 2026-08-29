@@ -54,6 +54,10 @@ def generate_map():
             "title": item.get("title", ""),
             "source": item.get("source", ""),
             "url": item.get("url", "#"),
+            "city_name": item.get("city_name"),
+            "city_lat": item.get("city_lat"),
+            "city_lon": item.get("city_lon"),
+            "domain": item.get("domain", "conflict"),
         })
 
     data_json = json.dumps(map_items)
