@@ -32,7 +32,9 @@ CREATE TABLE IF NOT EXISTS seen_items (
     domain TEXT DEFAULT 'conflict',  -- 'conflict' or 'disaster', for map marker shape
     confidence_tier TEXT DEFAULT 'unverified',    -- 'unverified' / 'single-source' / 'corroborated'
     confidence_trusted_count INTEGER DEFAULT 0,   -- count of DISTINCT trusted (RSS/ACLED) outlets confirming this
-    confidence_links TEXT DEFAULT NULL            -- JSON list of {source, url} for trusted corroborating outlets
+    confidence_links TEXT DEFAULT NULL,           -- JSON list of {source, url} for trusted corroborating outlets
+    archived INTEGER DEFAULT 0,    -- manually marked resolved by the user; excluded from default views
+    event_tags TEXT DEFAULT NULL   -- comma-separated multi-tags: security, protest, disaster, sloc, iran_war, russia_ukraine_war, defence
 );
 CREATE INDEX IF NOT EXISTS idx_seen_items_source ON seen_items(source);
 """
@@ -65,6 +67,8 @@ def init_db():
             ("confidence_tier", "TEXT DEFAULT 'unverified'"),
             ("confidence_trusted_count", "INTEGER DEFAULT 0"),
             ("confidence_links", "TEXT DEFAULT NULL"),
+            ("archived", "INTEGER DEFAULT 0"),
+            ("event_tags", "TEXT DEFAULT NULL"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE seen_items ADD COLUMN {column} {coltype_default}")
@@ -83,19 +87,21 @@ def is_seen(item_id: str) -> bool:
 def mark_seen(item: dict, notified: bool, category: str = "geopolitical",
               severity_tier: str = "low", severity_score: int = 0, region: str = None,
               city_name: str = None, city_lat: float = None, city_lon: float = None,
-              domain: str = "conflict"):
+              domain: str = "conflict", event_tags: list = None):
     keywords = item.get("matched_keywords", [])
     if isinstance(keywords, list):
         keywords = ",".join(keywords)
+
+    event_tags_str = ",".join(event_tags) if event_tags else None
 
     with get_conn() as conn:
         conn.execute(
             """
             INSERT OR IGNORE INTO seen_items
                 (item_id, source, title, url, published_at, matched_keywords, first_seen_at,
-                 notified, category, severity_tier, severity_score, region, city_name, city_lat, city_lon, domain)
+                 notified, category, severity_tier, severity_score, region, city_name, city_lat, city_lon, domain, event_tags)
             VALUES (:item_id, :source, :title, :url, :published_at, :matched_keywords, :first_seen_at,
-                    :notified, :category, :severity_tier, :severity_score, :region, :city_name, :city_lat, :city_lon, :domain)
+                    :notified, :category, :severity_tier, :severity_score, :region, :city_name, :city_lat, :city_lon, :domain, :event_tags)
             """,
             {
                 "item_id": item["item_id"],
@@ -114,28 +120,67 @@ def mark_seen(item: dict, notified: bool, category: str = "geopolitical",
                 "city_lat": city_lat,
                 "city_lon": city_lon,
                 "domain": domain,
+                "event_tags": event_tags_str,
             },
         )
 
 
-def get_dashboard_data() -> list[dict]:
-    """All notified (matched) items, newest first, for dashboard rendering."""
+def get_dashboard_data(include_archived: bool = False) -> list[dict]:
+    """All notified (matched) items, newest first, for dashboard rendering.
+
+    Archived items (manually marked resolved) are excluded by default --
+    they're never deleted, just kept out of the default view. Pass
+    include_archived=True to get everything, e.g. for an "Archived" filter.
+    """
     with get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT source, title, url, published_at, matched_keywords, first_seen_at,
+        query = """
+            SELECT item_id, source, title, url, published_at, matched_keywords, first_seen_at,
                    category, severity_tier, severity_score, region,
                    confidence_tier, confidence_trusted_count, confidence_links,
-                   city_name, city_lat, city_lon, domain
+                   city_name, city_lat, city_lon, domain, archived, event_tags
             FROM seen_items
             WHERE notified = 1
-            ORDER BY first_seen_at DESC
-            """
-        ).fetchall()
+        """
+        if not include_archived:
+            query += " AND archived = 0"
+        query += " ORDER BY first_seen_at DESC"
+
+        rows = conn.execute(query).fetchall()
         items = [dict(row) for row in rows]
         for item in items:
             item["confidence_links"] = json.loads(item["confidence_links"]) if item.get("confidence_links") else []
+            item["event_tags"] = item["event_tags"].split(",") if item.get("event_tags") else []
         return items
+
+
+def archive_item(item_id: str) -> bool:
+    """Manually marks a single item as resolved/archived. Never deletes -- reversible."""
+    with get_conn() as conn:
+        cursor = conn.execute("UPDATE seen_items SET archived = 1 WHERE item_id = ?", (item_id,))
+        return cursor.rowcount > 0
+
+
+def unarchive_item(item_id: str) -> bool:
+    """Reverses an archive action."""
+    with get_conn() as conn:
+        cursor = conn.execute("UPDATE seen_items SET archived = 0 WHERE item_id = ?", (item_id,))
+        return cursor.rowcount > 0
+
+
+def search_items_for_archiving(search_term: str, limit: int = 20) -> list[dict]:
+    """Title search to help find items to archive, used by the archive CLI tool."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT item_id, title, source, region, severity_tier, first_seen_at, archived
+            FROM seen_items
+            WHERE notified = 1 AND title LIKE ?
+            ORDER BY first_seen_at DESC
+            LIMIT ?
+            """,
+            (f"%{search_term}%", limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 def get_recent_items_for_confidence_scoring(days: int = 5) -> list[dict]:

@@ -113,6 +113,37 @@
   }
 
   #errorBox { display: none; padding: 40px; color: var(--sev-moderate); font-family: 'IBM Plex Mono', monospace; }
+
+  .time-controls {
+    padding: 10px 32px;
+    border-bottom: 1px solid var(--panel-border);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .time-controls .label { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); font-family: 'IBM Plex Mono', monospace; margin-right: 4px; }
+  .time-btn {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    color: var(--text-muted);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .time-btn:hover { color: var(--text); }
+  .time-btn.active { background: var(--amber-dim, rgba(232,163,61,.15)); color: var(--sev-moderate); border-color: var(--sev-moderate); }
+  .map-select {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -124,6 +155,7 @@
     <p class="mono" style="font-size:10px;color:var(--text-dim);margin:2px 0 0;">Travel advisories live in the dashboard's Travel filter, not here</p>
     <p class="mono" style="font-size:10px;color:var(--text-dim);margin:6px 0 0;" id="genTime"></p>
     <a href="dashboard.html" class="mono" style="display:inline-block; margin-top:10px; color:var(--sev-moderate); text-decoration:none; border:1px solid var(--panel-border); padding:6px 12px; border-radius:4px; font-size:11px;">← LIST VIEW</a>
+    <a href="background.html" class="mono" style="display:inline-block; margin-top:10px; margin-left:8px; color:var(--sev-moderate); text-decoration:none; border:1px solid var(--panel-border); padding:6px 12px; border-radius:4px; font-size:11px;">CONFLICT BACKGROUND →</a>
   </div>
   <div class="legend">
     <div class="legend-group">
@@ -140,10 +172,31 @@
       <div class="legend-row">
         <div class="legend-item"><span class="shape-demo circle"></span> Conflict / Security</div>
         <div class="legend-item"><span class="shape-demo triangle"></span> Natural Disaster</div>
+        <div class="legend-item"><span style="display:inline-block;width:10px;height:10px;border:2px solid var(--text-muted);border-radius:2px;transform:rotate(45deg);"></span> Maritime Chokepoint</div>
       </div>
     </div>
   </div>
 </header>
+
+<div class="time-controls" id="filterControls" title="Time window is filtered by each article's own published date, not when Intel Monitor captured it">
+  <span class="label">Filters</span>
+  <select id="timeFilterSelect" class="map-select">
+    <option value="30" selected>Published: last 30 days</option>
+    <option value="90">Published: last 90 days</option>
+    <option value="all">All time</option>
+  </select>
+  <select id="tagFilterSelect" class="map-select">
+    <option value="all" selected>All types</option>
+    <option value="security">Security Threats</option>
+    <option value="protest">Protests &amp; Unrest</option>
+    <option value="disaster">Natural Calamities</option>
+    <option value="sloc">Sea Lines of Communication</option>
+    <option value="iran_war">Iran War &amp; Gulf Region Alerts</option>
+    <option value="russia_ukraine_war">Russia-Ukraine War Alerts</option>
+    <option value="defence">Defence Alerts</option>
+  </select>
+  <span class="label" style="margin-left:8px;">Older signals fade automatically within the selected window</span>
+</div>
 
 <div id="map"></div>
 <div id="errorBox"></div>
@@ -160,10 +213,14 @@
     "Bangladesh": [23.7, 90.4], "Nepal": [28.4, 84.1], "Sri Lanka": [7.9, 80.7],
     "Myanmar": [21.9, 95.9], "Cambodia": [12.6, 104.9], "Vietnam": [14.1, 108.3],
     "Thailand": [15.9, 100.9], "Middle East": [33.3, 44.4], "Europe": [50.1, 10.4],
-    "South China Sea": [12.0, 114.0]
+    "South China Sea": [12.0, 114.0],
+    "Kashmir": [34.0, 76.5], "PoK": [34.4, 73.5], "Saudi Arabia": [24.0, 45.0],
+    "Yemen": [15.5, 47.5], "Qatar": [25.3, 51.2],
+    "Japan": [36.2, 138.3], "South Korea": [35.9, 127.8], "North Korea": [40.3, 127.5], "Australia": [-25.3, 133.8], "New Zealand": [-40.9, 174.9], "Indonesia": [-0.8, 113.9], "Malaysia": [4.2, 101.9], "Singapore": [1.35, 103.8], "Philippines": [12.9, 121.8], "Papua New Guinea": [-6.3, 143.9], "Mongolia": [46.9, 103.8], "Laos": [19.9, 102.6], "Brunei": [4.5, 114.7], "Timor-Leste": [-8.9, 125.7], "Iraq": [33.2, 43.7], "Syria": [34.8, 39.0], "Lebanon": [33.9, 35.9], "Jordan": [31.2, 36.5], "Kuwait": [29.3, 47.5], "United Arab Emirates": [23.4, 53.8], "Bahrain": [26.0, 50.6], "Oman": [21.5, 55.9], "Turkey": [38.9, 35.2], "Egypt": [26.8, 30.8], "United Kingdom": [55.4, -3.4], "France": [46.6, 2.2], "Germany": [51.2, 10.4], "Italy": [41.9, 12.6], "Spain": [40.5, -3.7], "Poland": [51.9, 19.1], "Netherlands": [52.1, 5.3], "Belgium": [50.5, 4.5], "Sweden": [60.1, 18.6], "Norway": [60.5, 8.5], "Finland": [61.9, 25.7], "Denmark": [56.3, 9.5], "Switzerland": [46.8, 8.2], "Austria": [47.5, 14.6], "Portugal": [39.4, -8.2], "Greece": [39.1, 21.8], "Ireland": [53.4, -8.2], "Czech Republic": [49.8, 15.5], "Romania": [45.9, 25.0], "Hungary": [47.2, 19.5], "Bulgaria": [42.7, 25.5], "Croatia": [45.1, 15.2], "Serbia": [44.0, 21.0], "Slovakia": [48.7, 19.7], "Slovenia": [46.2, 15.0], "Lithuania": [55.2, 23.9], "Latvia": [56.9, 24.6], "Estonia": [58.6, 25.0], "Belarus": [53.7, 27.9], "Moldova": [47.4, 28.4], "Bosnia and Herzegovina": [43.9, 17.7], "Albania": [41.2, 20.2], "North Macedonia": [41.6, 21.7], "Montenegro": [42.7, 19.4], "Kosovo": [42.6, 20.9], "Iceland": [64.9, -19.0], "Luxembourg": [49.8, 6.1], "Malta": [35.9, 14.4], "Cyprus": [35.1, 33.4], "Georgia": [42.3, 43.4], "Armenia": [40.1, 45.0], "Azerbaijan": [40.1, 47.6]
   };
 
   const SAMPLE_ITEMS = __DATA_JSON__;
+  const CHOKEPOINTS = __CHOKEPOINTS_JSON__;
 
   if (typeof L === 'undefined') {
     document.getElementById('map').style.display = 'none';
@@ -186,26 +243,39 @@
       maxZoom: 16
     }).addTo(map);
 
-    // Group by CITY when we have precise coordinates, otherwise fall back to
-    // the country-level region blip. This is what makes city-level items show
-    // their own precise pin instead of being lumped into the country marker.
-    const grouped = {};
-    SAMPLE_ITEMS.forEach(item => {
-      const key = item.city_name ? ('city:' + item.city_name) : ('region:' + item.region);
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(item);
+    let markerLayer = L.layerGroup().addTo(map);
+
+    // Static chokepoint reference markers -- always visible regardless of
+    // time/tag filters, since these are permanent geographic features, not
+    // time-bound events. Distinct visual style (diamond outline, no pulse)
+    // so they read as reference points, not live alerts.
+    const CHOKEPOINT_STATUS_COLORS = { disrupted: '#E83D5D', reduced: '#E8A33D', normal: '#5B8DEF' };
+    CHOKEPOINTS.forEach(cp => {
+      const color = CHOKEPOINT_STATUS_COLORS[cp.status] || '#5B8DEF';
+      const icon = L.divIcon({
+        html: `<div style="width:14px;height:14px;border:2px solid ${color};border-radius:2px;transform:rotate(45deg);background:${color}33;"></div>`,
+        className: '', iconSize: [14, 14],
+      });
+      const popupHtml = `
+        <div class="popup-region">⚓ ${cp.name}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${cp.connects}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">${cp.significance}</div>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--panel-border);">
+          <span class="tier-pill" style="background:${color}22;color:${color};">${cp.status.toUpperCase()}</span>
+          <div style="font-size:10px;color:var(--text-dim);margin-top:4px;">${cp.status_note}</div>
+        </div>
+      `;
+      L.marker([cp.lat, cp.lon], { icon }).addTo(map).bindPopup(popupHtml, { maxWidth: 280 });
     });
 
-    function buildPulseIcon(count, color, shape) {
+    function buildPulseIcon(count, color, shape, opacity) {
       const size = Math.min(14 + Math.log2(count + 1) * 8, 42);
       const coreShapeClass = shape === 'triangle' ? 'shape-triangle' : 'shape-circle';
-      // Triangle uses CSS border-triangle technique, which needs different
-      // sizing variables than the width/height approach circle/diamond use.
       const coreStyle = shape === 'triangle'
-        ? `--tri-size:${size * 0.35}px; --tri-color:${color};`
-        : `width:${size * 0.5}px; height:${size * 0.5}px; background:${color}; box-shadow: 0 0 12px ${color};`;
+        ? `--tri-size:${size * 0.35}px; --tri-color:${color}; opacity:${opacity};`
+        : `width:${size * 0.5}px; height:${size * 0.5}px; background:${color}; box-shadow: 0 0 12px ${color}; opacity:${opacity};`;
       const html = `
-        <div class="pulse-icon" style="width:${size * 2}px; height:${size * 2}px;">
+        <div class="pulse-icon" style="width:${size * 2}px; height:${size * 2}px; opacity:${opacity};">
           <div class="pulse-ring" style="width:${size}px; height:${size}px; background:${color};"></div>
           <div class="pulse-ring" style="width:${size}px; height:${size}px; background:${color}; animation-delay: 1.2s;"></div>
           <div class="pulse-core ${coreShapeClass}" style="${coreStyle}"></div>
@@ -214,70 +284,156 @@
       return L.divIcon({ html, className: '', iconSize: [size * 2, size * 2] });
     }
 
-    Object.entries(grouped).forEach(([key, items]) => {
-      const isCity = key.startsWith('city:');
-      const locationLabel = isCity ? (items[0].city_name + ', ' + items[0].region) : items[0].region;
-      const coords = isCity
-        ? [items[0].city_lat, items[0].city_lon]
-        : REGION_COORDS[items[0].region];
-      if (!coords || coords[0] == null || coords[1] == null) return;
+    // Prefer the article's own TRUE published date over first_seen_at
+    // (when Intel Monitor happened to capture it) -- this is what makes
+    // the 30/90-day filters mean "news from the last N days" rather than
+    // "things captured in the last N days of running." Falls back to
+    // first_seen_at when published_at is missing or unparseable.
+    function trueDate(item) {
+      if (item.published_at) {
+        const d = new Date(item.published_at);
+        if (!isNaN(d.getTime())) return d;
+      }
+      return item.first_seen_at ? new Date(item.first_seen_at) : null;
+    }
 
-      // Marker color = highest severity present at this location
-      const maxSeverity = items.reduce((max, i) =>
-        SEVERITY_RANK[i.severity] > SEVERITY_RANK[max] ? i.severity : max, 'low');
-      const color = SEVERITY_COLORS[maxSeverity];
+    // Same age badge concept as the dashboard -- makes long-running
+    // conflicts (Russia-Ukraine, Pakistan-Afghanistan) visible as
+    // historical context, not just noise.
+    function ageBadge(item) {
+      const d = trueDate(item);
+      if (!d) return '';
+      const ageDays = (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24);
+      if (ageDays < 7) return '';
+      let label, color;
+      if (ageDays < 30) {
+        label = Math.floor(ageDays) + 'd old'; color = 'var(--text-dim)';
+      } else if (ageDays < 365) {
+        label = Math.floor(ageDays / 30) + 'mo old'; color = 'var(--sev-moderate)';
+      } else {
+        label = (ageDays / 365).toFixed(1) + 'yr old'; color = '#C9A876';
+      }
+      return '<span class="tier-pill" style="background:' + color + '22; color:' + color + ';" title="Published ' + d.toISOString().slice(0, 10) + '">' + label + '</span>';
+    }
 
-      // Marker shape = category, using whichever category is more prevalent (or has the highest severity)
-      // Marker shape = domain (conflict vs natural disaster), using whichever
-      // is more prevalent at this location if mixed
-      const disasterItems = items.filter(i => i.domain === 'disaster');
-      const shape = disasterItems.length > items.length - disasterItems.length ? 'triangle' : 'circle';
+    // Freshness fade: the most recent item in a cluster determines how
+    // prominent the blip looks. Recent = full opacity, old = faded, so you
+    // can tell "hot right now" from "lingering history" at a glance,
+    // without anything being hidden or deleted.
+    function freshnessOpacity(mostRecentDate) {
+      if (!mostRecentDate) return 0.5;
+      const ageHours = (Date.now() - mostRecentDate.getTime()) / (1000 * 60 * 60);
+      if (ageHours <= 48) return 1.0;
+      if (ageHours <= 24 * 7) return 0.85;
+      if (ageHours <= 24 * 30) return 0.6;
+      return 0.35;
+    }
 
-      // City-level pins get a slightly smaller base size than country blips,
-      // since they represent one specific place rather than an aggregated region.
-      const icon = buildPulseIcon(isCity ? Math.max(items.length, 1.5) : items.length, color, shape);
+    function renderMarkers(items) {
+      markerLayer.clearLayers();
 
-      const CONF_COLORS = { corroborated: '#4FD16B', 'single-source': '#E8A33D', unverified: '#4C5876' };
-      const sortedItems = [...items].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
-      const scrollHint = items.length > 4
-        ? '<div style="font-size:10px;color:var(--text-dim);text-align:center;padding-top:6px;border-top:1px solid var(--panel-border);margin-top:4px;">scroll for more ↓</div>'
-        : '';
-      const precisionNote = isCity
-        ? '<div style="font-size:9px;color:var(--text-dim);margin-top:2px;">📍 precise location</div>'
-        : '';
-      const popupHtml = `
-        <div class="popup-region">${locationLabel} — ${items.length} signal${items.length > 1 ? 's' : ''}</div>
-        ${precisionNote}
-        ${sortedItems.map(i => {
-          const confTier = i.confidence_tier || 'unverified';
-          const confColor = CONF_COLORS[confTier];
-          const links = i.confidence_links || [];
-          const linksHtml = links.length > 0
-            ? '<div style="margin-top:4px;font-size:10px;">Confirmed by: ' +
-              links.map(l => '<a href="' + l.url + '" target="_blank" rel="noopener" style="color:#4FD16B;margin-right:8px;">' + l.source.replace('rss:', '') + '</a>').join('') +
-              '</div>'
-            : '';
-          return `
-          <div class="popup-item">
-            <a href="${i.url}" target="_blank" rel="noopener">${i.title}</a>
-            <div class="meta">
-              <span class="tier-pill" style="background:${SEVERITY_COLORS[i.severity]}22; color:${SEVERITY_COLORS[i.severity]};">SEV \u00b7 ${i.severity}</span>
-              <span class="tier-pill" style="background:${confColor}22; color:${confColor};">VERIFY \u00b7 ${confTier}</span>
-              ${i.source} · ${i.category === 'travel' ? 'Travel' : 'Geopolitical'}
-            </div>
-            ${linksHtml}
-          </div>
-        `;}).join('')}
-        ${scrollHint}
-      `;
-
-      L.marker(coords, { icon }).addTo(map).bindPopup(popupHtml, {
-        maxWidth: 320,
-        maxHeight: 320,
-        autoPan: true,
-        autoPanPadding: [30, 30],
+      const grouped = {};
+      items.forEach(item => {
+        const key = item.city_name ? ('city:' + item.city_name) : ('region:' + item.region);
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(item);
       });
+
+      Object.entries(grouped).forEach(([key, clusterItems]) => {
+        const isCity = key.startsWith('city:');
+        const locationLabel = isCity ? (clusterItems[0].city_name + ', ' + clusterItems[0].region) : clusterItems[0].region;
+        const coords = isCity
+          ? [clusterItems[0].city_lat, clusterItems[0].city_lon]
+          : REGION_COORDS[clusterItems[0].region];
+        if (!coords || coords[0] == null || coords[1] == null) return;
+
+        const maxSeverity = clusterItems.reduce((max, i) =>
+          SEVERITY_RANK[i.severity] > SEVERITY_RANK[max] ? i.severity : max, 'low');
+        const color = SEVERITY_COLORS[maxSeverity];
+
+        const disasterItems = clusterItems.filter(i => i.domain === 'disaster');
+        const shape = disasterItems.length > clusterItems.length - disasterItems.length ? 'triangle' : 'circle';
+
+        const mostRecent = clusterItems.reduce((latest, i) => {
+          const d = trueDate(i);
+          return (!latest || (d && d > latest)) ? d : latest;
+        }, null);
+        const opacity = freshnessOpacity(mostRecent);
+
+        const icon = buildPulseIcon(isCity ? Math.max(clusterItems.length, 1.5) : clusterItems.length, color, shape, opacity);
+
+        const CONF_COLORS = { corroborated: '#4FD16B', 'single-source': '#E8A33D', unverified: '#4C5876' };
+        const sortedItems = [...clusterItems].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
+        const scrollHint = clusterItems.length > 4
+          ? '<div style="font-size:10px;color:var(--text-dim);text-align:center;padding-top:6px;border-top:1px solid var(--panel-border);margin-top:4px;">scroll for more ↓</div>'
+          : '';
+        const precisionNote = isCity
+          ? '<div style="font-size:9px;color:var(--text-dim);margin-top:2px;">📍 precise location</div>'
+          : '';
+        const popupHtml = `
+          <div class="popup-region">${locationLabel} — ${clusterItems.length} signal${clusterItems.length > 1 ? 's' : ''}</div>
+          ${precisionNote}
+          ${sortedItems.map(i => {
+            const confTier = i.confidence_tier || 'unverified';
+            const confColor = CONF_COLORS[confTier];
+            const links = i.confidence_links || [];
+            const linksHtml = links.length > 0
+              ? '<div style="margin-top:4px;font-size:10px;">Confirmed by: ' +
+                links.map(l => '<a href="' + l.url + '" target="_blank" rel="noopener" style="color:#4FD16B;margin-right:8px;">' + l.source.replace('rss:', '') + '</a>').join('') +
+                '</div>'
+              : '';
+            return `
+            <div class="popup-item">
+              <a href="${i.url}" target="_blank" rel="noopener">${i.title}</a>
+              <div class="meta">
+                <span class="tier-pill" style="background:${SEVERITY_COLORS[i.severity]}22; color:${SEVERITY_COLORS[i.severity]};">SEV \u00b7 ${i.severity}</span>
+                <span class="tier-pill" style="background:${confColor}22; color:${confColor};">VERIFY \u00b7 ${confTier}</span>
+                ${ageBadge(i)}
+                ${i.source} · ${i.category === 'travel' ? 'Travel' : 'Geopolitical'}
+              </div>
+              ${linksHtml}
+            </div>
+          `;}).join('')}
+          ${scrollHint}
+        `;
+
+        L.marker(coords, { icon }).addTo(markerLayer).bindPopup(popupHtml, {
+          maxWidth: 320,
+          maxHeight: 320,
+          autoPan: true,
+          autoPanPadding: [30, 30],
+        });
+      });
+    }
+
+    let currentDays = 30;
+    let currentTag = 'all';
+    function applyTimeFilter() {
+      let filtered = SAMPLE_ITEMS;
+      if (currentDays !== 'all') {
+        const cutoff = Date.now() - (currentDays * 24 * 60 * 60 * 1000);
+        filtered = filtered.filter(i => {
+          const d = trueDate(i);
+          return d && d.getTime() > cutoff;
+        });
+      }
+      if (currentTag !== 'all') {
+        filtered = filtered.filter(i => (i.event_tags || []).includes(currentTag));
+      }
+      renderMarkers(filtered);
+    }
+
+    document.getElementById('timeFilterSelect').addEventListener('change', e => {
+      currentDays = e.target.value === 'all' ? 'all' : parseInt(e.target.value);
+      applyTimeFilter();
     });
+
+    document.getElementById('tagFilterSelect').addEventListener('change', e => {
+      currentTag = e.target.value;
+      applyTimeFilter();
+    });
+
+    applyTimeFilter();
   }
 </script>
 

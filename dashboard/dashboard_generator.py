@@ -295,6 +295,25 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .ownership-tag.state-linked { color: #E8A33D; background: rgba(232, 163, 61, 0.15); }
   .ownership-tag.state-propaganda { color: #E83D5D; background: rgba(232, 61, 93, 0.2); }
 
+  .age-badge {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    padding: 2px 7px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    cursor: help;
+    border: 1px solid transparent;
+  }
+  .age-badge.age-recent { color: var(--text-dim); background: rgba(76, 88, 118, 0.15); }
+  .age-badge.age-months { color: var(--amber); background: var(--amber-dim); }
+  .age-badge.age-years {
+    color: #C9A876;
+    background: rgba(201, 168, 118, 0.12);
+    border-color: rgba(201, 168, 118, 0.35);
+    font-style: italic;
+  }
+
   .kw-tag {
     font-size: 11px;
     color: var(--amber);
@@ -376,6 +395,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     </div>
     <div class="generated">
       <a href="map.html" class="mono" style="color:var(--amber); text-decoration:none; border:1px solid var(--panel-border); padding:6px 12px; border-radius:4px; margin-right:12px;">MAP VIEW →</a>
+      <a href="background.html" class="mono" style="color:var(--amber); text-decoration:none; border:1px solid var(--panel-border); padding:6px 12px; border-radius:4px; margin-right:12px;">CONFLICT BACKGROUND →</a>
       <span class="dot"></span>
       <span class="mono" id="generatedAt"></span>
     </div>
@@ -421,6 +441,21 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <button data-conf="single-source">Single-source</button>
     <button data-conf="unverified">Unverified</button>
   </div>
+  <select id="timeFilter" title="Filtered by each article's own published date, not when Intel Monitor captured it">
+    <option value="30" selected>Published: last 30 days</option>
+    <option value="90">Published: last 90 days</option>
+    <option value="all">All time</option>
+  </select>
+  <select id="tagFilter">
+    <option value="all" selected>All types</option>
+    <option value="security">Security Threats</option>
+    <option value="protest">Protests &amp; Unrest</option>
+    <option value="disaster">Natural Calamities</option>
+    <option value="sloc">Sea Lines of Communication</option>
+    <option value="iran_war">Iran War &amp; Gulf Region Alerts</option>
+    <option value="russia_ukraine_war">Russia-Ukraine War Alerts</option>
+    <option value="defence">Defence Alerts</option>
+  </select>
   <select id="sourceFilter">
     <option value="all">All sources</option>
   </select>
@@ -435,7 +470,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <script>
   const DATA = __DATA_JSON__;
 
-  const state = { search: "", category: "all", source: "all", confidence: "all" };
+  const state = { search: "", category: "all", source: "all", confidence: "all", days: 30, tag: "all" };
 
   function timeAgo(iso) {
     if (!iso) return "";
@@ -447,6 +482,42 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     if (hrs < 24) return hrs + "h ago";
     const days = Math.floor(hrs / 24);
     return days + "d ago";
+  }
+
+  // Prefer the article's own TRUE published date over first_seen_at (when
+  // Intel Monitor happened to capture it) -- this is what makes the
+  // 30/90-day filters mean "news from the last N days" rather than "things
+  // captured in the last N days of running." Falls back to first_seen_at
+  // when published_at is missing or unparseable.
+  function trueDate(item) {
+    if (item.published_at) {
+      const d = new Date(item.published_at);
+      if (!isNaN(d.getTime())) return d;
+    }
+    return item.first_seen_at ? new Date(item.first_seen_at) : null;
+  }
+
+  // Age badge: makes long-running conflicts visible as historical context,
+  // not just noise -- a story that's been active for years (Russia-Ukraine,
+  // Pakistan-Afghanistan) deserves a different visual treatment than
+  // something that just happened, so you can tell "background context" from
+  // "breaking now" at a glance.
+  function ageBadge(item) {
+    const d = trueDate(item);
+    if (!d) return '';
+    const ageDays = (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24);
+
+    if (ageDays < 7) return '';  // recent items don't need an age callout
+    let label, cls;
+    if (ageDays < 30) {
+      label = Math.floor(ageDays) + 'd old'; cls = 'age-recent';
+    } else if (ageDays < 365) {
+      label = Math.floor(ageDays / 30) + 'mo old'; cls = 'age-months';
+    } else {
+      const years = (ageDays / 365).toFixed(1);
+      label = years + 'yr old'; cls = 'age-years';
+    }
+    return '<span class="age-badge ' + cls + '" title="Published ' + d.toISOString().slice(0, 10) + '">' + label + '</span>';
   }
 
   function escapeHtml(str) {
@@ -478,6 +549,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   function render() {
     let items = DATA;
 
+    if (state.days !== "all") {
+      const cutoffTime = Date.now() - (state.days * 24 * 60 * 60 * 1000);
+      items = items.filter(d => {
+        const dt = trueDate(d);
+        return dt && dt.getTime() > cutoffTime;
+      });
+    }
+    if (state.tag !== "all") {
+      items = items.filter(d => (d.event_tags || []).includes(state.tag));
+    }
     if (state.category !== "all") {
       items = items.filter(d => d.category === state.category);
     }
@@ -518,6 +599,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         ? '<span class="ownership-tag ' + ownership.tag.toLowerCase().replace(/ /g, '-') + '" title="' + escapeHtml(ownership.note) + '">' + escapeHtml(ownership.tag) + '</span>'
         : '';
 
+      const ageHtml = ageBadge(d);
+
       const links = d.confidence_links || [];
       const linksHtml = links.length > 0
         ? '<div class="corroboration-links">Confirmed by: ' +
@@ -536,6 +619,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
               ${sevHtml}
               ${confHtml}
               ${kwHtml}
+              ${ageHtml}
               <span class="item-time mono">${timeAgo(d.first_seen_at)}</span>
             </div>
             ${linksHtml}
@@ -563,6 +647,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     document.querySelectorAll("#confidenceFilter button").forEach(b => b.classList.remove("active"));
     e.target.classList.add("active");
     state.confidence = e.target.dataset.conf;
+    render();
+  });
+
+  document.getElementById("timeFilter").addEventListener("change", e => {
+    state.days = e.target.value === "all" ? "all" : parseInt(e.target.value);
+    render();
+  });
+
+  document.getElementById("tagFilter").addEventListener("change", e => {
+    state.tag = e.target.value;
     render();
   });
 

@@ -12,6 +12,7 @@ Schedule (Windows): see README.md for a Task Scheduler snippet, same
                      pattern as your price tracker.
 """
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -20,13 +21,47 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from core.db import init_db, is_seen, mark_seen, get_recent_items_for_confidence_scoring, update_confidence_bulk, get_prior_related_count, get_items_needing_verification, apply_gdelt_verification
 from core.matcher import get_matcher, build_region_only_matcher
-from core import severity, confidence, ai_dedup, geocoding
+from core import severity, confidence, ai_dedup, geocoding, event_tags
 from collectors import rss_collector, reddit_collector, telegram_collector, acled_collector, usgs_collector, gdelt_collector
 from notifier import email_notifier
 from dashboard.dashboard_generator import generate_dashboard
 from dashboard.map_generator import generate_map
+from dashboard.background_generator import generate_background_page
 
 CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
+
+# For deciding whether a matched item is fresh enough to include in the
+# EMAIL digest -- not whether to store it. Everything gets stored regardless
+# (mark_seen always runs), so the dashboard/map's "All time" view can still
+# surface genuinely old content; this only controls what triggers an alert.
+# Travel advisories are deliberately exempt (see the check site below) --
+# standing government guidance doesn't stop being valid just because it
+# wasn't republished recently.
+MAX_ITEM_AGE_DAYS_FOR_DIGEST = 30
+
+
+def _is_recently_published(item: dict, max_age_days: int = MAX_ITEM_AGE_DAYS_FOR_DIGEST) -> bool:
+    """
+    True if the item's own published_at date is recent enough to alert on,
+    or if the date can't be parsed at all (fail open -- better to include
+    an item we're uncertain about than silently drop it).
+    """
+    from email.utils import parsedate_to_datetime
+    from datetime import timezone as _tz, timedelta as _td
+
+    published_at = item.get("published_at")
+    if not published_at:
+        return True
+
+    try:
+        published_dt = parsedate_to_datetime(published_at)
+        if published_dt.tzinfo is None:
+            published_dt = published_dt.replace(tzinfo=_tz.utc)
+    except (TypeError, ValueError):
+        return True  # unparseable -- fail open, don't silently exclude
+
+    age = datetime.now(_tz.utc) - published_dt
+    return age <= _td(days=max_age_days)
 
 
 def load_config() -> dict:
@@ -34,8 +69,12 @@ def load_config() -> dict:
 
 
 def _process_items(items: list[dict], matcher, category: str, regions: list[str], geocoding_enabled: bool = False) -> list[dict]:
-    """Dedupe + match + score a batch of items. Returns only new, matched items."""
+    """Dedupe + match + score a batch of items. Returns only new, matched items
+    that are also fresh enough to include in the email digest -- stale items
+    are still fully stored (mark_seen always runs) for dashboard/map browsing,
+    just excluded from what gets returned/alerted on."""
     matched = []
+    stale_but_stored = 0
     for item in items:
         if is_seen(item["item_id"]):
             continue
@@ -59,21 +98,35 @@ def _process_items(items: list[dict], matcher, category: str, regions: list[str]
             # travel advisories entirely, so there's no point geocoding those.
             city_name = city_lat = city_lon = None
             if geocoding_enabled and category != "travel":
-                enriched = geocoding.enrich_item_with_city(item, regions)
+                enriched = geocoding.enrich_item_with_city(item, regions, primary_region=primary_region)
                 city_name = enriched.get("city_name")
                 city_lat = enriched.get("city_lat")
                 city_lon = enriched.get("city_lon")
 
             domain = severity.classify_domain(hits) if category != "travel" else "conflict"
+            tags = event_tags.classify_event_tags(keyword_hits, region=primary_region) if category != "travel" else []
 
-            matched.append(item)
             item["region"] = primary_region  # attach for reuse by AI dedup clustering
             item["severity_tier"] = tier
             mark_seen(item, notified=True, category=category,
                       severity_tier=tier, severity_score=score, region=primary_region,
-                      city_name=city_name, city_lat=city_lat, city_lon=city_lon, domain=domain)
+                      city_name=city_name, city_lat=city_lat, city_lon=city_lon, domain=domain, event_tags=tags)
+
+            # Always store (above), but only include in the returned list --
+            # which feeds the email digest -- if it's either a travel
+            # advisory (standing guidance, exempt from freshness) or was
+            # actually published recently. Stale items are still fully
+            # queryable via the dashboard/map's 90-day/all-time views.
+            if category == "travel" or _is_recently_published(item):
+                matched.append(item)
+            else:
+                stale_but_stored += 1
         else:
             mark_seen(item, notified=False, category=category)  # record so we never re-check it
+
+    if stale_but_stored:
+        print(f"  [i] {stale_but_stored} matched item(s) stored but excluded from digest "
+              f"(published >{MAX_ITEM_AGE_DAYS_FOR_DIGEST} days ago -- still browsable via 'All time' on the dashboard/map)")
     return matched
 
 
@@ -112,7 +165,7 @@ def run():
     travel_feeds = config.get("travel_advisory_feeds", [])
     if travel_feeds:
         print("[*] Fetching travel advisory feeds...")
-        travel_items = rss_collector.collect(travel_feeds)
+        travel_items = rss_collector.collect(travel_feeds, filter_stale=False)
         print(f"[*] Fetched {len(travel_items)} total travel advisory items.")
         new_travel_matches = _process_items(travel_items, travel_matcher, category="travel", regions=config["regions"])
         print(f"[*] {len(new_travel_matches)} new travel advisory item(s) matched.")
@@ -152,7 +205,15 @@ def run():
             if is_seen(item["item_id"]):
                 continue
             place_text = item["_usgs_place"].lower()
-            matched_region = next((r for r in config["regions"] if r.lower() in place_text), None)
+            # Word-boundary matching, not naive substring -- "india" as a
+            # substring incorrectly matches "Indian Ridge" or "Indian Ocean
+            # Triple Junction" (real USGS location names for oceanic seismic
+            # features nowhere near India). Same bug class as "RT" matching
+            # "Reporting" in the source-bias safeguard.
+            matched_region = next(
+                (r for r in config["regions"] if re.search(r'\b' + re.escape(r.lower()) + r'\b', place_text)),
+                None
+            )
             if not matched_region:
                 continue
 
@@ -162,7 +223,8 @@ def run():
             item["severity_tier"] = tier
             mark_seen(item, notified=True, category="geopolitical",
                       severity_tier=tier, severity_score=score, region=matched_region,
-                      city_name=item["_usgs_place"], city_lat=item["_usgs_lat"], city_lon=item["_usgs_lon"], domain="disaster")
+                      city_name=item["_usgs_place"], city_lat=item["_usgs_lat"], city_lon=item["_usgs_lon"],
+                      domain="disaster", event_tags=["disaster"])
             new_usgs_matches.append(item)
         print(f"[*] {len(new_usgs_matches)} new USGS earthquake event(s) near tracked regions.")
 
@@ -221,6 +283,7 @@ def run():
     # --- Refresh dashboard and map (always, so they reflect full history even on quiet runs) ---
     generate_dashboard()
     generate_map()
+    generate_background_page()
 
     print(f"=== Run complete {datetime.now().isoformat()} ===\n")
 

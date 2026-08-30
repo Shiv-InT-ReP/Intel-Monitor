@@ -1,12 +1,16 @@
 # Real config with credentials -- NEVER commit this
 config.json
 
+# Generated output pages -- regenerated fresh every run, never commit
+dashboard.html
+map.html
+background.html
+releases.html
+
 # Local runtime data
 intel_monitor.db
 *.session
 *.session-journal
-dashboard.html
-map.html
 
 # Python
 __pycache__/

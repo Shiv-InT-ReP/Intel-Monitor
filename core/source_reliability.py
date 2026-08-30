@@ -64,6 +64,7 @@ STATE_FUNDED_INDEPENDENT = {
 # transparently so readers can weigh it.
 STATE_LINKED_OWNERSHIP = {
     "cna": "Owned by Mediacorp, which Singapore's government owns via Temasek Holdings",
+    "daily sabah": "Owned by Turkuvaz Media Group, widely described as close to Turkey's ruling AKP and President Erdoğan; not a state-controlled propaganda outlet, but a documented ownership tie worth knowing",
 }
 
 

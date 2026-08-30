@@ -26,6 +26,7 @@ KEYWORD_WEIGHTS = {
     "state of emergency": 2, "cyberattack": 2, "expel diplomat": 2,
     "seized vessel": 2, "piracy": 2, "territorial waters violation": 2,
     "shooting": 2, "stabbing": 2, "bomb": 2, "earthquake": 2, "cyclone": 2,
+    "riot": 2, "flood": 2, "wildfire": 2, "volcano": 2,
 
     # Moderate (weight 1) -- posture/escalation signals, not yet kinetic, or lower-severity incidents
     "mobiliz": 1, "clash": 1, "military drill": 1, "warship": 1,
@@ -34,6 +35,7 @@ KEYWORD_WEIGHTS = {
     "insurgent": 1, "militant": 1, "sabotage": 1, "curfew": 1, "crackdown": 1,
     "mass arrest": 1, "data breach": 1, "sanctions": 1, "arms deal": 1,
     "weapons transfer": 1, "trade war": 1, "protest": 1, "fire incident": 1, "storm": 1,
+    "general strike": 1, "roadblock": 1, "border closure": 1, "airport closure": 1,
 }
 
 TIER_THRESHOLDS = [
@@ -52,14 +54,18 @@ TRAVEL_LEVEL_PATTERNS = [
 
 
 def score_geopolitical(matched_keywords: list[str]) -> tuple[int, str]:
-    """Returns (numeric_score, tier) for a geopolitical item's matched keywords."""
+    """Returns (numeric_score, tier) for a geopolitical item's matched keywords.
+
+    Uses direct exact-match lookup rather than substring matching -- matched_keywords
+    already contains exact strings from the config keyword list, so substring matching
+    was unnecessary and created real bugs (e.g. "general strike" was silently scored
+    as if it were plain "strike", since "strike" is a substring of "general strike").
+    Falls back to weight 1 for any keyword not explicitly in the table (defensive,
+    in case config and this weight table ever drift out of sync).
+    """
     score = 0
     for kw in matched_keywords:
-        kw_lower = kw.lower()
-        for weighted_term, weight in KEYWORD_WEIGHTS.items():
-            if weighted_term in kw_lower or kw_lower in weighted_term:
-                score += weight
-                break
+        score += KEYWORD_WEIGHTS.get(kw.lower(), 1)
 
     for threshold, tier in TIER_THRESHOLDS:
         if score >= threshold:

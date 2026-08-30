@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from core.db import get_dashboard_data
+from core.chokepoints import CHOKEPOINTS
 
 TEMPLATE_PATH = Path(__file__).resolve().parent / "map_template.html"
 MAP_OUTPUT_PATH = Path(__file__).resolve().parent.parent / "map.html"
@@ -23,6 +24,73 @@ KNOWN_REGIONS = {
     "Pakistan", "Afghanistan", "Bangladesh", "Nepal", "Sri Lanka",
     "Myanmar", "Burma", "Cambodia", "Vietnam", "Thailand",
     "Middle East", "Europe", "South China Sea",
+    "Kashmir", "PoK", "Saudi Arabia", "Yemen", "Qatar",
+    "Japan",
+    "South Korea",
+    "North Korea",
+    "Australia",
+    "New Zealand",
+    "Indonesia",
+    "Malaysia",
+    "Singapore",
+    "Philippines",
+    "Papua New Guinea",
+    "Mongolia",
+    "Laos",
+    "Brunei",
+    "Timor-Leste",
+    "Iraq",
+    "Syria",
+    "Lebanon",
+    "Jordan",
+    "Kuwait",
+    "United Arab Emirates",
+    "Bahrain",
+    "Oman",
+    "Turkey",
+    "Egypt",
+    "United Kingdom",
+    "France",
+    "Germany",
+    "Italy",
+    "Spain",
+    "Poland",
+    "Netherlands",
+    "Belgium",
+    "Sweden",
+    "Norway",
+    "Finland",
+    "Denmark",
+    "Switzerland",
+    "Austria",
+    "Portugal",
+    "Greece",
+    "Ireland",
+    "Czech Republic",
+    "Romania",
+    "Hungary",
+    "Bulgaria",
+    "Croatia",
+    "Serbia",
+    "Slovakia",
+    "Slovenia",
+    "Lithuania",
+    "Latvia",
+    "Estonia",
+    "Belarus",
+    "Moldova",
+    "Bosnia and Herzegovina",
+    "Albania",
+    "North Macedonia",
+    "Montenegro",
+    "Kosovo",
+    "Iceland",
+    "Luxembourg",
+    "Malta",
+    "Cyprus",
+    "Georgia",
+    "Armenia",
+    "Azerbaijan",
 }
 
 
@@ -58,13 +126,21 @@ def generate_map():
             "city_lat": item.get("city_lat"),
             "city_lon": item.get("city_lon"),
             "domain": item.get("domain", "conflict"),
+            "event_tags": item.get("event_tags", []),
+            "first_seen_at": item.get("first_seen_at"),
+            "published_at": item.get("published_at"),
         })
 
     data_json = json.dumps(map_items)
     # Same </script guard as the dashboard generator -- see comment there.
     data_json = data_json.replace("</script", "<\\/script").replace("</SCRIPT", "<\\/SCRIPT")
+
+    chokepoints_json = json.dumps(list(CHOKEPOINTS.values()))
+    chokepoints_json = chokepoints_json.replace("</script", "<\\/script").replace("</SCRIPT", "<\\/SCRIPT")
+
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
     html = template.replace("__DATA_JSON__", data_json)
+    html = html.replace("__CHOKEPOINTS_JSON__", chokepoints_json)
 
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     html = html.replace(
