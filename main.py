@@ -14,19 +14,21 @@ Schedule (Windows): see README.md for a Task Scheduler snippet, same
 import json
 import re
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from core.db import init_db, is_seen, mark_seen, get_recent_items_for_confidence_scoring, update_confidence_bulk, get_prior_related_count, get_items_needing_verification, apply_gdelt_verification
+from core.db import init_db, is_seen, mark_seen, get_recent_items_for_confidence_scoring, update_confidence_bulk, get_prior_related_count, get_items_needing_verification, apply_gdelt_verification, set_video_summary, set_item_domain, remove_event_tag, set_item_region
 from core.matcher import get_matcher, build_region_only_matcher
-from core import severity, confidence, ai_dedup, geocoding, event_tags
+from core import severity, confidence, ai_dedup, geocoding, event_tags, youtube_transcript, context_classifier, video_summarizer
 from collectors import rss_collector, reddit_collector, telegram_collector, acled_collector, usgs_collector, gdelt_collector
 from notifier import email_notifier
 from dashboard.dashboard_generator import generate_dashboard
 from dashboard.map_generator import generate_map
 from dashboard.background_generator import generate_background_page
+from dashboard.releases_generator import generate_releases_page
 
 CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
 
@@ -98,7 +100,8 @@ def _process_items(items: list[dict], matcher, category: str, regions: list[str]
             # travel advisories entirely, so there's no point geocoding those.
             city_name = city_lat = city_lon = None
             if geocoding_enabled and category != "travel":
-                enriched = geocoding.enrich_item_with_city(item, regions, primary_region=primary_region)
+                enriched = geocoding.enrich_item_with_city(item, regions, primary_region=primary_region,
+                                                            all_matched_regions=region_hits)
                 city_name = enriched.get("city_name")
                 city_lat = enriched.get("city_lat")
                 city_lon = enriched.get("city_lon")
@@ -108,6 +111,12 @@ def _process_items(items: list[dict], matcher, category: str, regions: list[str]
 
             item["region"] = primary_region  # attach for reuse by AI dedup clustering
             item["severity_tier"] = tier
+            item["domain"] = domain  # attach for reuse by the context classifier's domain-correction check
+            # Only the keyword-derived tags are candidates for AI verification --
+            # iran_war/russia_ukraine_war are region-based, not vulnerable to the
+            # same "ambiguous word" false-positive pattern (see event_tags.py).
+            item["_candidate_tags"] = [t for t in tags if t not in ("iran_war", "russia_ukraine_war")]
+            item["_candidate_regions"] = region_hits  # all matched regions, for disaster-location disambiguation
             mark_seen(item, notified=True, category=category,
                       severity_tier=tier, severity_score=score, region=primary_region,
                       city_name=city_name, city_lat=city_lat, city_lon=city_lon, domain=domain, event_tags=tags)
@@ -160,6 +169,85 @@ def run():
                                       geocoding_enabled=config.get("geocoding", {}).get("enabled", False))
     print(f"[*] {len(new_geo_matches)} new geopolitical item(s) matched.")
 
+    # --- AI context classification: catches false-positive matches from
+    # ambiguous keywords ("heart attack" matching "attack", etc.). Only
+    # affects the EMAIL DIGEST -- items flagged as not-actually-relevant
+    # still stay fully stored/browsable (same "store everything, be
+    # selective about what alerts" principle as the published-date fix).
+    ai_config = config.get("ai_dedup", {})  # reuses the same API key config as AI dedup
+    if ai_config.get("enabled") and ai_config.get("api_key"):
+        context_candidates = context_classifier.get_items_needing_context_check(new_geo_matches, config["regions"])
+        if context_candidates:
+            print(f"[*] Checking {len(context_candidates)} ambiguous-keyword match(es) with AI context classifier...")
+            classifications = context_classifier.classify_context_batch(context_candidates, ai_config)
+            filtered_count = 0
+            corrected_domain_count = 0
+            rejected_tags_count = 0
+            corrected_region_count = 0
+            new_geo_matches_after_context = []
+            for item in new_geo_matches:
+                result = classifications.get(item["item_id"])  # None -- fail safe, keep unverified items as-is
+                if result is None:
+                    new_geo_matches_after_context.append(item)
+                    continue
+
+                if not result["relevant"]:
+                    filtered_count += 1
+                    print(f"  [x] Filtered from digest (context check): {item['title'][:70]}")
+                    # Not relevant at all -- none of its keyword-matched tags are
+                    # valid either. The item stays fully stored (mark_seen already
+                    # ran), but strip its tags so it doesn't pollute filter views
+                    # like "Defence Alerts" for a story that isn't genuinely one.
+                    for candidate in item.get("_candidate_tags", []):
+                        if remove_event_tag(item["item_id"], candidate):
+                            rejected_tags_count += 1
+                    continue
+
+                new_geo_matches_after_context.append(item)
+                # Correct a wrong keyword-based domain guess (e.g. "drone storm"
+                # matching the disaster keyword "storm") -- domain was already
+                # computed, attached to the item, and stored via mark_seen
+                # inside _process_items, so this is a write-back fix.
+                if item.get("domain") and item["domain"] != result["domain"]:
+                    set_item_domain(item["item_id"], result["domain"])
+                    corrected_domain_count += 1
+                    # Same misclassification also affects the "disaster" event
+                    # tag (shows as "Natural Calamities" in the UI filter) --
+                    # strip it if the AI determined this isn't really a disaster.
+                    if result["domain"] == "conflict":
+                        remove_event_tag(item["item_id"], "disaster")
+
+                # Strip any OTHER keyword-matched tag the AI didn't confirm --
+                # e.g. "troop" matching a Boy Scout troop story under "defence".
+                candidate_tags = item.get("_candidate_tags", [])
+                confirmed_tags = set(result.get("confirmed_tags", []))
+                for candidate in candidate_tags:
+                    if candidate not in confirmed_tags and candidate != "disaster":  # disaster already handled above
+                        if remove_event_tag(item["item_id"], candidate):
+                            rejected_tags_count += 1
+
+                # Correct a wrong disaster-location region pick -- e.g. "Second
+                # Israeli confirmed missing in Nepal floods" wrongly pinned to
+                # Israel (a victim's nationality) instead of Nepal (the actual
+                # disaster location).
+                correct_region = result.get("correct_region")
+                if correct_region and item.get("region") and correct_region != item["region"]:
+                    set_item_region(item["item_id"], correct_region)
+                    corrected_region_count += 1
+
+            new_geo_matches = new_geo_matches_after_context
+            if filtered_count:
+                print(f"[*] Context classifier excluded {filtered_count} false-positive keyword match(es) from the digest.")
+            if corrected_domain_count:
+                print(f"[*] Context classifier corrected {corrected_domain_count} domain misclassification(s) "
+                      f"(e.g. metaphorical 'storm'/'flood' wording wrongly tagged as a natural disaster).")
+            if rejected_tags_count:
+                print(f"[*] Context classifier rejected {rejected_tags_count} false-positive tag(s) "
+                      f"(e.g. 'troop' matching a Boy Scout troop story under Defence).")
+            if corrected_region_count:
+                print(f"[*] Context classifier corrected {corrected_region_count} disaster-location region "
+                      f"mismatch(es) (e.g. pinned to a victim's nationality instead of the actual disaster location).")
+
     # --- Travel advisory sources (separate feed list, separate matcher) ---
     new_travel_matches = []
     travel_feeds = config.get("travel_advisory_feeds", [])
@@ -169,6 +257,61 @@ def run():
         print(f"[*] Fetched {len(travel_items)} total travel advisory items.")
         new_travel_matches = _process_items(travel_items, travel_matcher, category="travel", regions=config["regions"])
         print(f"[*] {len(new_travel_matches)} new travel advisory item(s) matched.")
+
+    # --- Official government/IGO releases (Ministries, UN, NATO, etc.) --
+    # Same region-only matching as travel advisories -- these are official
+    # statements, they don't need an escalation keyword to be relevant.
+    new_release_matches = []
+    release_feeds = config.get("official_release_feeds", [])
+    if release_feeds:
+        print("[*] Fetching official government/IGO release feeds...")
+        release_items = rss_collector.collect(release_feeds, filter_stale=False)
+        print(f"[*] Fetched {len(release_items)} total official release items.")
+
+        # For YouTube-sourced releases (video briefings, spoken announcements
+        # with no written statement), fetch the auto-generated transcript and
+        # fold it into the matchable text -- otherwise a generically-titled
+        # video ("Weekly MEA Briefing") that verbally covers something
+        # region-relevant would never match on title alone. Capped and rate
+        # limited to keep runtime reasonable and avoid hammering YouTube.
+        yt_config = config.get("youtube_transcripts", {})
+        if yt_config.get("enabled", True):
+            transcript_count = 0
+            transcript_cap = yt_config.get("max_per_run", 15)
+            for item in release_items:
+                if transcript_count >= transcript_cap:
+                    break
+                if is_seen(item["item_id"]) or not youtube_transcript.is_youtube_url(item["url"]):
+                    continue
+                transcript = youtube_transcript.get_transcript_text(item["url"])
+                if transcript:
+                    item["text_for_matching"] = item.get("text_for_matching", "") + "\n" + transcript
+                    item["_transcript"] = transcript  # preserved for summarization after matching, below
+                transcript_count += 1
+                time.sleep(1.0)  # be polite to YouTube's transcript endpoint
+            if transcript_count:
+                print(f"[*] Fetched {transcript_count} YouTube transcript(s) for spoken-content matching.")
+
+        new_release_matches = _process_items(release_items, travel_matcher, category="official_release", regions=config["regions"])
+        print(f"[*] {len(new_release_matches)} new official release item(s) matched.")
+
+        # Summarize (and translate, if needed) matched YouTube briefings --
+        # only for items that actually matched AND have a transcript, so we
+        # never spend API calls summarizing something that turned out to be
+        # irrelevant to your tracked regions.
+        ai_config_for_video = config.get("ai_dedup", {})
+        if ai_config_for_video.get("enabled") and ai_config_for_video.get("api_key"):
+            summarized_count = 0
+            for item in new_release_matches:
+                transcript = item.get("_transcript")
+                if not transcript:
+                    continue
+                summary = video_summarizer.summarize_video(item["title"], transcript, ai_config_for_video)
+                if summary:
+                    set_video_summary(item["item_id"], summary)
+                    summarized_count += 1
+            if summarized_count:
+                print(f"[*] Summarized {summarized_count} YouTube briefing(s) for the releases page.")
 
     # --- ACLED verified conflict data (already-structured, no keyword matching needed) ---
     new_acled_matches = []
@@ -284,6 +427,7 @@ def run():
     generate_dashboard()
     generate_map()
     generate_background_page()
+    generate_releases_page()
 
     print(f"=== Run complete {datetime.now().isoformat()} ===\n")
 

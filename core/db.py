@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS seen_items (
     confidence_trusted_count INTEGER DEFAULT 0,   -- count of DISTINCT trusted (RSS/ACLED) outlets confirming this
     confidence_links TEXT DEFAULT NULL,           -- JSON list of {source, url} for trusted corroborating outlets
     archived INTEGER DEFAULT 0,    -- manually marked resolved by the user; excluded from default views
-    event_tags TEXT DEFAULT NULL   -- comma-separated multi-tags: security, protest, disaster, sloc, iran_war, russia_ukraine_war, defence
+    event_tags TEXT DEFAULT NULL,  -- comma-separated multi-tags: security, protest, disaster, sloc, iran_war, russia_ukraine_war, defence
+    video_summary TEXT DEFAULT NULL  -- AI summary/translation of a YouTube briefing transcript, when available
 );
 CREATE INDEX IF NOT EXISTS idx_seen_items_source ON seen_items(source);
 """
@@ -69,6 +70,7 @@ def init_db():
             ("confidence_links", "TEXT DEFAULT NULL"),
             ("archived", "INTEGER DEFAULT 0"),
             ("event_tags", "TEXT DEFAULT NULL"),
+            ("video_summary", "TEXT DEFAULT NULL"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE seen_items ADD COLUMN {column} {coltype_default}")
@@ -153,6 +155,70 @@ def get_dashboard_data(include_archived: bool = False) -> list[dict]:
         return items
 
 
+def set_item_domain(item_id: str, domain: str) -> bool:
+    """Corrects a previously-stored domain classification (conflict/disaster) after
+    the AI context classifier catches a keyword-based misclassification."""
+    with get_conn() as conn:
+        cursor = conn.execute("UPDATE seen_items SET domain = ? WHERE item_id = ?", (domain, item_id))
+        return cursor.rowcount > 0
+
+
+def set_item_region(item_id: str, region: str) -> bool:
+    """Corrects a previously-stored region after the AI context classifier
+    determines a naive first-matched-region pick was wrong -- e.g. a
+    disaster story pinned to a victim's nationality instead of where the
+    disaster is actually happening. Also clears any city-level coordinates,
+    since those were geocoded and validated against the OLD (wrong) region
+    and can't be trusted once the region itself changes -- the map falls
+    back to the new region's centroid instead of a stale, mismatched pin."""
+    with get_conn() as conn:
+        cursor = conn.execute(
+            "UPDATE seen_items SET region = ?, city_name = NULL, city_lat = NULL, city_lon = NULL "
+            "WHERE item_id = ?",
+            (region, item_id)
+        )
+        return cursor.rowcount > 0
+
+
+def remove_event_tag(item_id: str, tag_to_remove: str) -> bool:
+    """Strips one tag (e.g. 'disaster') from a stored event_tags list after
+    the AI context classifier determines it was a keyword-based
+    misclassification -- e.g. 'drone storm' wrongly tagged via the word
+    'storm'. Leaves any other correctly-matched tags untouched."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT event_tags FROM seen_items WHERE item_id = ?", (item_id,)).fetchone()
+        if not row or not row["event_tags"]:
+            return False
+        current_tags = row["event_tags"].split(",")
+        if tag_to_remove not in current_tags:
+            return False
+        new_tags = [t for t in current_tags if t != tag_to_remove]
+        conn.execute("UPDATE seen_items SET event_tags = ? WHERE item_id = ?",
+                     (",".join(new_tags) if new_tags else None, item_id))
+        return True
+
+
+def set_video_summary(item_id: str, summary: str) -> bool:
+    """Stores an AI-generated summary/translation for a YouTube briefing item."""
+    with get_conn() as conn:
+        cursor = conn.execute("UPDATE seen_items SET video_summary = ? WHERE item_id = ?", (summary, item_id))
+        return cursor.rowcount > 0
+
+
+def get_official_releases() -> list[dict]:
+    """Official government/IGO release items (Ministries, UN, NATO, etc.), newest first."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT item_id, source, title, url, published_at, first_seen_at, region, video_summary
+            FROM seen_items
+            WHERE notified = 1 AND category = 'official_release'
+            ORDER BY first_seen_at DESC
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
 def archive_item(item_id: str) -> bool:
     """Manually marks a single item as resolved/archived. Never deletes -- reversible."""
     with get_conn() as conn:
@@ -160,10 +226,28 @@ def archive_item(item_id: str) -> bool:
         return cursor.rowcount > 0
 
 
-def unarchive_item(item_id: str) -> bool:
-    """Reverses an archive action."""
+def unarchive_item(item_id_prefix: str) -> bool:
+    """
+    Reverses an archive action. Accepts either a full item_id or just a
+    prefix (matching what --show-archived actually displays -- a truncated
+    12-character ID, since showing the full 64-character hash there would
+    be unreadable). Guards against a prefix matching more than one item
+    (astronomically unlikely with a 12-char SHA256 prefix, but checked
+    rather than assumed) by refusing to act rather than silently updating
+    the wrong row.
+    """
     with get_conn() as conn:
-        cursor = conn.execute("UPDATE seen_items SET archived = 0 WHERE item_id = ?", (item_id,))
+        matches = conn.execute(
+            "SELECT item_id FROM seen_items WHERE item_id LIKE ? AND archived = 1",
+            (item_id_prefix + "%",)
+        ).fetchall()
+        if len(matches) == 0:
+            return False
+        if len(matches) > 1:
+            print(f"  [!] Prefix '{item_id_prefix}' matches {len(matches)} archived items -- "
+                  f"too ambiguous, use a longer prefix.")
+            return False
+        cursor = conn.execute("UPDATE seen_items SET archived = 0 WHERE item_id = ?", (matches[0]["item_id"],))
         return cursor.rowcount > 0
 
 

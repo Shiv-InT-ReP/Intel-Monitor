@@ -11,9 +11,23 @@ a broader time-window filter should legitimately be able to surface.
 """
 import hashlib
 import re
+import ssl
 from datetime import datetime, timezone
 
 import feedparser
+
+# Some sites (government .gov domains in particular) have an incomplete
+# certificate chain that Python's default trust store -- especially on
+# Windows -- can't fully verify, producing "unable to get local issuer
+# certificate" even though the site works fine in a normal browser. certifi
+# ships a more complete, actively-maintained CA bundle; installing it as
+# the global default fixes this for every feedparser/urllib call, not just
+# one specific feed.
+try:
+    import certifi
+    ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    pass  # certifi not installed -- falls back to the system default, most feeds still work fine
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 

@@ -241,6 +241,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <div class="nav-links">
     <a href="dashboard.html">LIST VIEW</a>
     <a href="map.html">MAP VIEW</a>
+    <a href="releases.html">OFFICIAL RELEASES</a>
   </div>
 </header>
 
@@ -362,7 +363,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       if (c.last_reviewed) {
         const reviewedDate = new Date(c.last_reviewed);
         const daysSince = Math.floor((Date.now() - reviewedDate.getTime()) / (1000 * 60 * 60 * 24));
-        const isStale = daysSince > 45;
+        const isStale = daysSince > 14;
         reviewedHtml = `<div class="conflict-meta" style="${isStale ? 'color:var(--red);' : ''}">
           ANALYSIS LAST REVIEWED ${c.last_reviewed} (${daysSince}d ago)${isStale ? ' — consider refreshing given new developments' : ''}
         </div>`;

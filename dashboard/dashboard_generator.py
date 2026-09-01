@@ -233,6 +233,20 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     cursor: pointer;
   }
 
+  .archived-toggle {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    color: var(--text-muted);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12px;
+    padding: 10px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .archived-toggle input { cursor: pointer; }
+
   main { padding: 8px 32px 48px; }
 
   .item {
@@ -396,6 +410,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div class="generated">
       <a href="map.html" class="mono" style="color:var(--amber); text-decoration:none; border:1px solid var(--panel-border); padding:6px 12px; border-radius:4px; margin-right:12px;">MAP VIEW →</a>
       <a href="background.html" class="mono" style="color:var(--amber); text-decoration:none; border:1px solid var(--panel-border); padding:6px 12px; border-radius:4px; margin-right:12px;">CONFLICT BACKGROUND →</a>
+      <a href="releases.html" class="mono" style="color:var(--amber); text-decoration:none; border:1px solid var(--panel-border); padding:6px 12px; border-radius:4px; margin-right:12px;">OFFICIAL RELEASES →</a>
       <span class="dot"></span>
       <span class="mono" id="generatedAt"></span>
     </div>
@@ -459,6 +474,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   <select id="sourceFilter">
     <option value="all">All sources</option>
   </select>
+  <label class="archived-toggle" title="Switch to a dedicated view of manually archived items, or items you've resolved">
+    <input type="checkbox" id="archivedToggle"> Show Archived
+  </label>
 </div>
 
 <main id="itemList"></main>
@@ -470,7 +488,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <script>
   const DATA = __DATA_JSON__;
 
-  const state = { search: "", category: "all", source: "all", confidence: "all", days: 30, tag: "all" };
+  const state = { search: "", category: "all", source: "all", confidence: "all", days: 30, tag: "all", showArchived: false };
 
   function timeAgo(iso) {
     if (!iso) return "";
@@ -548,6 +566,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   function render() {
     let items = DATA;
+
+    // Archived items are hidden by default (the normal working view).
+    // Toggling "Show Archived" switches to a DEDICATED view of just the
+    // archived items, rather than mixing them in with active ones --
+    // cleaner for actually reviewing what's been archived.
+    items = items.filter(d => state.showArchived ? !!d.archived : !d.archived);
 
     if (state.days !== "all") {
       const cutoffTime = Date.now() - (state.days * 24 * 60 * 60 * 1000);
@@ -665,6 +689,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     render();
   });
 
+  document.getElementById("archivedToggle").addEventListener("change", e => {
+    state.showArchived = e.target.checked;
+    render();
+  });
+
   document.getElementById("generatedAt").textContent = "GENERATED " + new Date("__GENERATED_ISO__").toISOString().replace("T", " ").slice(0, 16) + " UTC";
 
   populateSources();
@@ -678,7 +707,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
 
 def generate_dashboard():
-    items = get_dashboard_data()
+    items = get_dashboard_data(include_archived=True)
     for item in items:
         item["ownership_tag"] = get_ownership_tag(item.get("source", ""))
     data_json = json.dumps(items)

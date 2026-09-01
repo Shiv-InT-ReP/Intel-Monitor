@@ -156,6 +156,7 @@
     <p class="mono" style="font-size:10px;color:var(--text-dim);margin:6px 0 0;" id="genTime"></p>
     <a href="dashboard.html" class="mono" style="display:inline-block; margin-top:10px; color:var(--sev-moderate); text-decoration:none; border:1px solid var(--panel-border); padding:6px 12px; border-radius:4px; font-size:11px;">← LIST VIEW</a>
     <a href="background.html" class="mono" style="display:inline-block; margin-top:10px; margin-left:8px; color:var(--sev-moderate); text-decoration:none; border:1px solid var(--panel-border); padding:6px 12px; border-radius:4px; font-size:11px;">CONFLICT BACKGROUND →</a>
+    <a href="releases.html" class="mono" style="display:inline-block; margin-top:10px; margin-left:8px; color:var(--sev-moderate); text-decoration:none; border:1px solid var(--panel-border); padding:6px 12px; border-radius:4px; font-size:11px;">OFFICIAL RELEASES →</a>
   </div>
   <div class="legend">
     <div class="legend-group">
@@ -173,6 +174,7 @@
         <div class="legend-item"><span class="shape-demo circle"></span> Conflict / Security</div>
         <div class="legend-item"><span class="shape-demo triangle"></span> Natural Disaster</div>
         <div class="legend-item"><span style="display:inline-block;width:10px;height:10px;border:2px solid var(--text-muted);border-radius:2px;transform:rotate(45deg);"></span> Maritime Chokepoint</div>
+        <div class="legend-item"><span style="display:inline-block;width:16px;height:2px;background:#6FA8FF;"></span> Shipping Route (only shown when "Sea Lines of Communication" filter is selected)</div>
       </div>
     </div>
   </div>
@@ -221,6 +223,7 @@
 
   const SAMPLE_ITEMS = __DATA_JSON__;
   const CHOKEPOINTS = __CHOKEPOINTS_JSON__;
+  const SHIPPING_ROUTES = __ROUTES_JSON__;
 
   if (typeof L === 'undefined') {
     document.getElementById('map').style.display = 'none';
@@ -245,16 +248,51 @@
 
     let markerLayer = L.layerGroup().addTo(map);
 
-    // Static chokepoint reference markers -- always visible regardless of
-    // time/tag filters, since these are permanent geographic features, not
-    // time-bound events. Distinct visual style (diamond outline, no pulse)
-    // so they read as reference points, not live alerts.
-    const CHOKEPOINT_STATUS_COLORS = { disrupted: '#E83D5D', reduced: '#E8A33D', normal: '#5B8DEF' };
+    // Shipping routes + chokepoints -- kept in their OWN layer group so they
+    // can be toggled together, only shown when the SLOC filter is actively
+    // selected rather than cluttering every view by default. Rendered into
+    // this group but NOT added to the map yet; toggleSlocLayer() controls
+    // visibility based on the tag filter.
+    let slocLayer = L.layerGroup();      // static: routes + chokepoints, built once
+    let slocThreatLayer = L.layerGroup(); // dynamic: threat blips, rebuilt on every filter change
+
+    // Status (and thus color/style) is derived from each route's/chokepoint's
+    // real current condition -- see shipping_routes.py / chokepoints.py --
+    // so this automatically reflects reality without needing separate
+    // manual updates here.
+    const ROUTE_STATUS_COLORS = { disrupted: '#E8607A', reduced: '#E8B84D', normal: '#6FA8FF' };
+    SHIPPING_ROUTES.forEach(route => {
+      const color = ROUTE_STATUS_COLORS[route.status] || '#6FA8FF';
+      const isDisrupted = route.status !== 'normal';
+      const line = L.polyline(route.waypoints, {
+        color: color,
+        weight: isDisrupted ? 2.5 : 1.5,
+        opacity: isDisrupted ? 0.8 : 0.55,
+        dashArray: isDisrupted ? '10 6' : '2 6',  // even "normal" routes get a soft dotted style -- reads as a lane, not a solid border
+        lineCap: 'round',
+        lineJoin: 'round',
+        smoothFactor: 1.5,
+      }).addTo(slocLayer);
+
+      const notesHtml = route.status_notes && route.status_notes.length > 0
+        ? '<div style="font-size:10px;color:var(--text-dim);margin-top:6px;">' + route.status_notes.join('<br>') + '</div>'
+        : '';
+      line.bindPopup(`
+        <div class="popup-region">🚢 ${route.name}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${route.connects}</div>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--panel-border);">
+          <span class="tier-pill" style="background:${color}22;color:${color};">${route.status.toUpperCase()}</span>
+          ${notesHtml}
+        </div>
+      `, { maxWidth: 300 });
+    });
+
+    const CHOKEPOINT_STATUS_COLORS = { disrupted: '#E8607A', reduced: '#E8B84D', normal: '#6FA8FF' };
     CHOKEPOINTS.forEach(cp => {
-      const color = CHOKEPOINT_STATUS_COLORS[cp.status] || '#5B8DEF';
+      const color = CHOKEPOINT_STATUS_COLORS[cp.status] || '#6FA8FF';
       const icon = L.divIcon({
-        html: `<div style="width:14px;height:14px;border:2px solid ${color};border-radius:2px;transform:rotate(45deg);background:${color}33;"></div>`,
-        className: '', iconSize: [14, 14],
+        html: `<div style="width:13px;height:13px;border:2px solid ${color};border-radius:3px;transform:rotate(45deg);background:${color}22;box-shadow:0 0 6px ${color}88;"></div>`,
+        className: '', iconSize: [13, 13],
       });
       const popupHtml = `
         <div class="popup-region">⚓ ${cp.name}</div>
@@ -265,8 +303,78 @@
           <div style="font-size:10px;color:var(--text-dim);margin-top:4px;">${cp.status_note}</div>
         </div>
       `;
-      L.marker([cp.lat, cp.lon], { icon }).addTo(map).bindPopup(popupHtml, { maxWidth: 280 });
+      L.marker([cp.lat, cp.lon], { icon }).addTo(slocLayer).bindPopup(popupHtml, { maxWidth: 280 });
     });
+
+    // Shows the SLOC layer only when that specific tag filter is selected --
+    // called from the tag filter's change handler further down.
+    function toggleSlocLayer(tag) {
+      if (tag === 'sloc') {
+        if (!map.hasLayer(slocLayer)) slocLayer.addTo(map);
+        if (!map.hasLayer(slocThreatLayer)) slocThreatLayer.addTo(map);
+      } else {
+        if (map.hasLayer(slocLayer)) map.removeLayer(slocLayer);
+        if (map.hasLayer(slocThreatLayer)) map.removeLayer(slocThreatLayer);
+      }
+    }
+
+    // Small, subtle threat blips for SLOC-tagged items -- reuses the exact
+    // same buildPulseIcon() function AND the same location-grouping logic
+    // as the main renderMarkers(), so multiple incidents at the same spot
+    // correctly combine into one properly-sized icon instead of stacking
+    // as separate overlapping markers (which was the actual bug -- it made
+    // busy locations look "bigger and blobbier" than genuinely isolated
+    // ones, purely from unintended overlap, not any real size difference).
+    function renderSlocThreatBlips(allItems) {
+      slocThreatLayer.clearLayers();
+      const threats = allItems.filter(i => (i.event_tags || []).includes('sloc'));
+
+      const grouped = {};
+      threats.forEach(item => {
+        const key = item.city_name ? ('city:' + item.city_name) : ('region:' + item.region);
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(item);
+      });
+
+      Object.entries(grouped).forEach(([key, clusterItems]) => {
+        const isCity = key.startsWith('city:');
+        const coords = isCity
+          ? [clusterItems[0].city_lat, clusterItems[0].city_lon]
+          : REGION_COORDS[clusterItems[0].region];
+        if (!coords || coords[0] == null || coords[1] == null) return;
+
+        const maxSeverity = clusterItems.reduce((max, i) =>
+          SEVERITY_RANK[i.severity] > SEVERITY_RANK[max] ? i.severity : max, 'low');
+        const color = SEVERITY_COLORS[maxSeverity];
+        const icon = buildPulseIcon(isCity ? Math.max(clusterItems.length, 1.5) : clusterItems.length, color, 'circle', 1.0);
+
+        const allChokepoints = [...new Set(clusterItems.flatMap(i => i.sloc_chokepoint_names || []))];
+        const disruptionLine = allChokepoints.length > 0
+          ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--panel-border);font-size:11px;color:${color};">⚠ Because of ${clusterItems.length > 1 ? 'these' : 'this'}, ${allChokepoints.join(' / ')} is at risk of disruption</div>`
+          : '';
+
+        const sortedItems = [...clusterItems].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
+        const itemsHtml = sortedItems.map(item => {
+          const itemColor = SEVERITY_COLORS[item.severity] || color;
+          return `
+            <div class="popup-item">
+              <a href="${item.url}" target="_blank" rel="noopener">${item.title}</a>
+              <div class="meta">
+                <span class="tier-pill" style="background:${itemColor}22;color:${itemColor};">SEV \u00b7 ${item.severity}</span>
+                ${item.source.replace('rss:', '').replace('telegram:', '')}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        const popupHtml = `
+          <div class="popup-region">${clusterItems.length} SLOC threat${clusterItems.length > 1 ? 's' : ''}</div>
+          ${itemsHtml}
+          ${disruptionLine}
+        `;
+        L.marker(coords, { icon }).addTo(slocThreatLayer).bindPopup(popupHtml, { maxWidth: 320, maxHeight: 320 });
+      });
+    }
 
     function buildPulseIcon(count, color, shape, opacity) {
       const size = Math.min(14 + Math.log2(count + 1) * 8, 42);
@@ -417,6 +525,15 @@
           return d && d.getTime() > cutoff;
         });
       }
+      renderSlocThreatBlips(filtered);  // always keep threat blips in sync with the time window
+
+      if (currentTag === 'sloc') {
+        // The small threat-blip layer already shows these distinctly --
+        // showing the normal full pulse-icon markers for the SAME items at
+        // the same time would just duplicate them visually.
+        renderMarkers([]);
+        return;
+      }
       if (currentTag !== 'all') {
         filtered = filtered.filter(i => (i.event_tags || []).includes(currentTag));
       }
@@ -430,6 +547,7 @@
 
     document.getElementById('tagFilterSelect').addEventListener('change', e => {
       currentTag = e.target.value;
+      toggleSlocLayer(currentTag);
       applyTimeFilter();
     });
 

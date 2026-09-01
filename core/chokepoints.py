@@ -52,8 +52,24 @@ CHOKEPOINTS = {
         "lat": 41.1, "lon": 29.0,
         "connects": "Black Sea to Sea of Marmara / Mediterranean",
         "significance": "Sole sea route for Black Sea grain/energy exports, including Ukraine and Russia",
-        "status": "normal",
-        "status_note": "Operating under wartime traffic restrictions/insurance risk tied to the Russia-Ukraine war",
+        "status": "reduced",
+        "status_note": "Operating under wartime traffic restrictions and elevated insurance risk tied to the Russia-Ukraine war; Turkey summoned Ukraine's ambassador in August 2026 after Turkish-flagged vessels were struck in the Black Sea",
+    },
+    "taiwan_strait": {
+        "name": "Taiwan Strait",
+        "lat": 24.0, "lon": 119.5,
+        "connects": "South China Sea to East China Sea, separating Taiwan from mainland China",
+        "significance": "Handles 20%+ of global maritime trade by value; carries nearly half the world's container fleet and the bulk of Taiwan's semiconductor exports (TSMC) -- a disruption here threatens chip supply, not oil",
+        "status": "reduced",
+        "status_note": "PLA aircraft and vessels routinely cross the median line amid ongoing China-Taiwan tension (see Conflict Background) -- not currently blockaded, but under a real, elevated risk premium",
+    },
+    "danish_straits": {
+        "name": "Danish Straits (Great Belt/Øresund)",
+        "lat": 55.5, "lon": 11.0,
+        "connects": "Baltic Sea to the North Sea, between Denmark and Sweden",
+        "significance": "The only maritime exit for all Baltic Sea nations (Russia, Finland, Sweden, Poland, Germany, the Baltic states); carries the bulk of Russia's seaborne Baltic oil exports",
+        "status": "reduced",
+        "status_note": "Oil volumes ~60% higher than 2021 as Russia reroutes sanctioned Baltic crude to Asian buyers via 'shadow fleet' tankers (~175/month); Denmark expanded port-state inspections and fuel-sulfur monitoring in its 2026 budget in response",
     },
 }
 
@@ -71,9 +87,11 @@ REGION_TO_CHOKEPOINTS = {
     "Southeast Asia": ["strait_of_malacca"],
     "Vietnam": ["strait_of_malacca"],
     "Thailand": ["strait_of_malacca"],
-    "Russia": ["turkish_straits"],
+    "Russia": ["turkish_straits", "danish_straits"],
     "Ukraine": ["turkish_straits"],
-    "Europe": ["turkish_straits", "suez_canal"],
+    "Europe": ["turkish_straits", "suez_canal", "danish_straits"],
+    "Taiwan": ["taiwan_strait"],
+    "China": ["taiwan_strait"],
 }
 
 

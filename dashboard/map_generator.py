@@ -11,7 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from core.db import get_dashboard_data
-from core.chokepoints import CHOKEPOINTS
+from core.chokepoints import CHOKEPOINTS, get_chokepoints_for_region
+from core.shipping_routes import get_all_routes_with_status
 
 TEMPLATE_PATH = Path(__file__).resolve().parent / "map_template.html"
 MAP_OUTPUT_PATH = Path(__file__).resolve().parent.parent / "map.html"
@@ -129,6 +130,10 @@ def generate_map():
             "event_tags": item.get("event_tags", []),
             "first_seen_at": item.get("first_seen_at"),
             "published_at": item.get("published_at"),
+            "sloc_chokepoint_names": (
+                [cp["name"] for cp in get_chokepoints_for_region(item.get("region"))]
+                if "sloc" in (item.get("event_tags") or []) else []
+            ),
         })
 
     data_json = json.dumps(map_items)
@@ -138,9 +143,13 @@ def generate_map():
     chokepoints_json = json.dumps(list(CHOKEPOINTS.values()))
     chokepoints_json = chokepoints_json.replace("</script", "<\\/script").replace("</SCRIPT", "<\\/SCRIPT")
 
+    routes_json = json.dumps(get_all_routes_with_status())
+    routes_json = routes_json.replace("</script", "<\\/script").replace("</SCRIPT", "<\\/SCRIPT")
+
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
     html = template.replace("__DATA_JSON__", data_json)
     html = html.replace("__CHOKEPOINTS_JSON__", chokepoints_json)
+    html = html.replace("__ROUTES_JSON__", routes_json)
 
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     html = html.replace(

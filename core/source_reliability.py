@@ -36,6 +36,7 @@ STATE_PROPAGANDA_PATTERNS = [
     re.compile(r"russia today", re.IGNORECASE),
     re.compile(r"sputnik", re.IGNORECASE),
     re.compile(r"\btass\b", re.IGNORECASE),
+    re.compile(r"ria novosti", re.IGNORECASE),  # state-owned; the same government entity that later launched Sputnik
     re.compile(r"xinhua", re.IGNORECASE),
     re.compile(r"\bcgtn\b", re.IGNORECASE),
     re.compile(r"global times", re.IGNORECASE),
