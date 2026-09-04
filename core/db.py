@@ -198,6 +198,25 @@ def remove_event_tag(item_id: str, tag_to_remove: str) -> bool:
         return True
 
 
+def add_event_tag(item_id: str, tag_to_add: str) -> bool:
+    """Adds one tag to a stored event_tags list -- the counterpart to
+    remove_event_tag, for the AI classifier's narrow ability to RECLASSIFY
+    (not just reject) a tag -- e.g. security -> defence for a weapons-deal
+    story that only matched 'security' because of a weapon system's name,
+    not an actual threat (see context_classifier.py's security-vs-defence
+    exception). No-op (returns False) if the tag is already present, so
+    it's always safe to call unconditionally."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT event_tags FROM seen_items WHERE item_id = ?", (item_id,)).fetchone()
+        current_tags = [t for t in (row["event_tags"] or "").split(",") if t] if row else []
+        if tag_to_add in current_tags:
+            return False  # already present, nothing to do
+        current_tags.append(tag_to_add)
+        conn.execute("UPDATE seen_items SET event_tags = ? WHERE item_id = ?",
+                     (",".join(current_tags), item_id))
+        return True
+
+
 def set_video_summary(item_id: str, summary: str) -> bool:
     """Stores an AI-generated summary/translation for a YouTube briefing item."""
     with get_conn() as conn:
@@ -381,8 +400,18 @@ def get_prior_related_count(region: str, keywords: list[str], days: int = 5) -> 
         if stored_kws & keyword_set:
             count += 1
     return count
+
+
+def get_items_missing_region() -> list[dict]:
     """Notified items where region is still NULL -- i.e. matched before
-    severity/region tracking existed. Used by the one-time backfill script."""
+    severity/region tracking existed. Used by the one-time backfill script.
+
+    NOTE: this function was found as orphaned/unreachable dead code (a
+    docstring and body with no 'def' line, sitting after another function's
+    return statement) while reconstructing this file -- restored here as
+    its own proper function based on what its docstring/body clearly
+    intended. Worth confirming nothing external was already relying on
+    the old broken location before removing this note."""
     with get_conn() as conn:
         rows = conn.execute(
             """

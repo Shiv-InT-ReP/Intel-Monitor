@@ -84,14 +84,20 @@ CONFLICTS = {
         "name": "2026 Iran War, Strait of Hormuz Crisis & Gaza Ceasefire",
         "regions": ["Iran", "Israel", "Yemen", "Saudi Arabia", "Qatar"],
         "started": "2026-02-28",
-        "last_reviewed": "2026-08-30",
+        "last_reviewed": "2026-09-03",
         "status": "active",
         "risk_level": "Critical",
         "status_summary": (
             "Began with US-Israeli airstrikes on Iran; a ceasefire on April "
-            "7-8 never fully held. As of late July 2026, Iran continued "
-            "asserting control over the Strait of Hormuz despite the "
-            "ceasefire, and fighting has flared repeatedly since. The war "
+            "7-8 never fully held. Late August saw a return to direct kinetic "
+            "exchange -- tanker strikes near Hormuz, a US strike on Larak "
+            "Island, and Iranian retaliation reaching Jordan and the UAE -- "
+            "alongside an intensifying economic-pressure campaign (Bessent's "
+            "'Hormuz worthless within two years' framing signals a long-game "
+            "US strategy of economic bypass over rapid diplomatic resolution). "
+            "Sanctions and direct kinetic exchange are now running in parallel "
+            "-- a genuinely multi-domain active conflict, not just an "
+            "economic-pressure campaign with occasional flare-ups. The war "
             "has directly stalled progress on the separate Gaza ceasefire, "
             "which began October 10, 2025 -- the Trump administration's "
             "attention has been consumed by Iran, leaving Gaza's 20-point "
@@ -114,6 +120,13 @@ CONFLICTS = {
              "source": "Britannica (2026 Iran war)", "url": "https://www.britannica.com/event/2026-Iran-war"},
             {"date": "2026-07-20", "event": "J Street's nine-month Gaza ceasefire assessment explicitly attributes stalled progress to the Trump administration being 'distracted by the ongoing conflict with Iran'",
              "source": "J Street", "url": "https://jstreet.org/nine-months-in-assessing-the-status-of-the-gaza-ceasefire/"},
+            {"date": "2026-08-28", "event": "Iranian rial hits a record low (~210,000 rial); domestic gasoline shortages reported, with officials attributing lines partly to increased travel and partly to reserve drawdowns",
+             "source": "Radio Farda", "url": "https://www.radiofarda.com/a/iran-currency-new-record-210-thousands-rial/33844113.html"},
+            {"date": "2026-08-31", "event": "Two oil supertankers struck by projectiles near the Strait of Hormuz; UKMTO confirmed, IRGC claims mines were used.", "source": "Bloomberg, UKMTO, IranWire"},
+            {"date": "2026-08-31", "event": "US strikes IRGC targets on Iran's Larak Island.", "source": "CENTCOM"},
+            {"date": "2026-08-31", "event": "Iran launches retaliatory strikes on US-linked targets in Jordan and the UAE.", "source": "Al Jazeera, The Hill"},
+            {"date": "2026-09-01", "event": "Iranian President Pezeshkian meets Putin at the SCO summit in Bishkek; Putin reaffirms Russian support for Iran; Pezeshkian signals openness to US talks \"if US returns to its commitments.\"", "source": "The Tribune"},
+            {"date": "2026-09-01", "event": "US Treasury Secretary Bessent tells G20 meeting Hormuz will be \"worthless\" within two years.", "source": "The National"},
         ],
         "casualties": "1 tugboat sunk, 17+ merchant ships damaged (7 abandoned), 2 ships captured, 12 seafarers killed or missing, 1 port worker killed in Bahrain, per Wikipedia's 2026 Strait of Hormuz crisis tracker",
         "chokepoint_impact": "Strait of Hormuz (20-25% of world seaborne oil trade) has been disrupted/contested since the war began -- see the Chokepoints reference on the map for live status",
@@ -128,24 +141,31 @@ CONFLICTS = {
             {"actor": "Hamas", "objective": "Survive as Gaza's governing/military force; extract concessions through the stalled ceasefire process"},
             {"actor": "Pakistan", "objective": "Regional mediator role, which also raises its standing amid its own border conflict"},
         ],
-        "regional_linkages": "Directly stalls the separate Gaza ceasefire (Trump administration bandwidth consumed by Iran). Analysts link China's more assertive South China Sea posture to a belief the US is 'preoccupied in the Persian Gulf.' South Korea-US talks have explicitly referenced needing Seoul's help securing Hormuz passage -- a Gulf crisis reaching into Korean Peninsula diplomacy.",
-        "outlook_30_90": "The June 2026 MOU has not produced a durable reopening of Hormuz; continued low-level ship attacks (like the July 6 incident) are likely to persist. A wider war involving direct US-Iran ground escalation remains possible but isn't the base case within 90 days. Watch the September Xi-Trump summit for any linked diplomatic movement, given China's own oil-import stake in Hormuz staying open.",
+        "regional_linkages": "Directly stalls the separate Gaza ceasefire (Trump administration bandwidth consumed by Iran). Analysts link China's more assertive South China Sea posture to a belief the US is 'preoccupied in the Persian Gulf.' South Korea-US talks have explicitly referenced needing Seoul's help securing Hormuz passage -- a Gulf crisis reaching into Korean Peninsula diplomacy. Russia-Iran alignment is visibly strengthening (the Aug 31-Sept 1 Putin-Pezeshkian SCO meeting and public Russian backing) at the same time Russia itself faces intensifying Western economic pressure over Ukraine -- see the Russia-Ukraine dossier for the reverse link.",
+        "outlook_30_90": "Short-term, expect continued tit-for-tat -- further Iranian harassment of Hormuz shipping met with targeted US strikes on IRGC assets. Both sides appear to be signaling controlled escalation (targeted, not maximal), which keeps near-term full-scale war unlikely. Medium-term, economic attrition becomes the dominant axis: a weakening rial and fuel shortages carry real domestic unrest risk, given Iran's history of fuel-price-triggered protests. The open question is whether internal economic pressure forces Tehran back to the table faster than Russian/Chinese support can offset the sanctions campaign.",
         "escalation_triggers": [
             "A US or Israeli strike killing senior IRGC or Iranian officials",
             "A successful Iranian attack sinking a US or allied naval vessel",
             "Iran moving toward an overt nuclear weapons test",
+            "Further US strikes on Iranian territory beyond the Larak Island precedent",
+            "Iran targeting additional Gulf state assets beyond Jordan and the UAE",
+            "A move toward full enforcement of Hormuz closure",
         ],
         "early_warning_indicators": [
             "Insurance and shipping rates for Hormuz transits",
             "IRGC naval vessel movements reported via OSINT/AIS tracking",
             "Statements from Gulf states on evacuating diplomatic staff",
+            "A strike on a neutral-flagged vessel (e.g. Indian- or Chinese-flagged) -- would signal expanding, less controlled targeting",
+            "Any sign of direct Russian/Chinese military materiel reaching Iran, not just rhetorical solidarity",
+            "Domestic unrest in Iran specifically tied to fuel shortages or currency collapse -- a historically real flashpoint",
+            "Shifts in Saudi/UAE posture -- either tightening security cooperation with US CENTCOM, or conversely hedging toward direct engagement with Tehran to reduce their own exposure",
         ],
         "second_order_effects": {
             "energy": "Hormuz carries 20-25% of global oil trade; disruption directly drives global fuel prices, evidenced by the Philippines' March 2026 energy emergency thousands of miles away",
-            "shipping": "17+ merchant ships already damaged; insurance costs for the route have risen sharply",
+            "shipping": "17+ merchant ships already damaged; insurance costs for the route have risen sharply. Given Hormuz's centrality to Asian crude imports, sustained disruption has real knock-on exposure for India, China, Japan, and South Korea specifically.",
             "trade": "Qatar and UAE, as regional trade/logistics hubs, face indirect economic exposure even without direct attacks on their territory",
         },
-        "confidence_level": "Moderate to low on casualty/attribution specifics -- Wikipedia and Britannica trackers here are secondary aggregators of primary reporting. Gaza casualty figures (Palestinian Health Ministry) and ceasefire violation counts (Gaza Government Media Office) are both party-reported, not independently verified by a neutral body.",
+        "confidence_level": "Moderate to low on casualty/attribution specifics -- Wikipedia and Britannica trackers here are secondary aggregators of primary reporting. Gaza casualty figures (Palestinian Health Ministry) and ceasefire violation counts (Gaza Government Media Office) are both party-reported, not independently verified by a neutral body. Iranian claims about strike attribution and casualties often can't be independently verified in real time. CENTCOM/Treasury statements are more directly attributable but represent one side's framing -- treat both with appropriate caution.",
         "strategic_chokepoints": ["strait_of_hormuz", "bab_el_mandeb"],
     },
 
@@ -381,7 +401,7 @@ CONFLICTS = {
         "name": "Russia-Ukraine War",
         "regions": ["Russia", "Ukraine"],
         "started": "2022-02-24",
-        "last_reviewed": "2026-08-30",
+        "last_reviewed": "2026-09-03",
         "status": "active",
         "risk_level": "Critical",
         "status_summary": (
@@ -405,6 +425,10 @@ CONFLICTS = {
              "source": "Lviv Herald", "url": "https://www.lvivherald.com/post/ukraine-russia-conflict-front-and-rear-lines-summary-assessment-early-august-2026"},
             {"date": "2026-08-29", "event": "Turkey summons Ukraine's ambassador after two Turkish-operated vessels are struck in the Black Sea; five drones enter Moldova's airspace during a Russian overnight attack",
              "source": "The World Now (live tracker)", "url": "https://www.the-world-now.com/ukraine-war-map"},
+            {"date": "2026-09-01", "event": "Sixth consecutive night of intensified Russian strikes on Kyiv, an unprecedented sustained tempo since 2022; at least 12 killed.", "source": "AP, Washington Times"},
+            {"date": "2026-09-01", "event": "Russian ballistic missile strike on a Kyiv railway depot kills 7, including 6 railway workers.", "source": "Ukrinform"},
+            {"date": "2026-09-01", "event": "Russia now producing an estimated ~3,000 jet-powered (Geran-4-type) drones per month, a significant capability increase.", "source": "Ukrinform"},
+            {"date": "2026-09-01", "event": "Ukraine is combat-testing at least four new interceptor systems specifically designed to counter jet-powered drones.", "source": "Ukrinform"},
         ],
 
         "key_actors": [
@@ -413,12 +437,13 @@ CONFLICTS = {
             {"actor": "NATO/Western allies", "objective": "Sustain Ukraine's defense without direct NATO-Russia confrontation; increasingly strained by the parallel airspace-incursion crisis on NATO's own eastern flank"},
             {"actor": "North Korea", "objective": "Supply Russia with artillery (25-40% of Russia's current stock) in exchange for economic and possibly technological benefits"},
         ],
-        "regional_linkages": "North Korea's arms supply role directly links this war to the Korea conflict tracked separately. Russia's suspension of Kerch Strait/Don-Azov shipping and repeated Black Sea vessel strikes (including Turkish-flagged ships) tie this conflict to the Turkish Straits chokepoint and Turkey's own security posture. Drone incursions into Baltic NATO airspace during Ukrainian long-range strikes are actively straining the separate Russia-NATO relationship.",
-        "outlook_30_90": "Given the current stalemate and both sides' declared preference for attrition over decisive offensives, expect continued gradual, small territorial shifts alongside intensified drone/infrastructure strikes on both sides. No credible near-term ceasefire process is currently underway; watch for any renewed diplomatic initiative tied to broader US-Russia dynamics.",
+        "regional_linkages": "North Korea's arms supply role directly links this war to the Korea conflict tracked separately. Russia's suspension of Kerch Strait/Don-Azov shipping and repeated Black Sea vessel strikes (including Turkish-flagged ships) tie this conflict to the Turkish Straits chokepoint and Turkey's own security posture. Drone incursions into Baltic NATO airspace during Ukrainian long-range strikes are actively straining the separate Russia-NATO relationship. Russia and Iran are simultaneously under intensifying Western economic pressure and appear to be coordinating/aligning in response -- the Aug 31-Sept 1 Putin-Pezeshkian SCO meeting is the clearest recent signal; see the Iran War dossier for the reverse link.",
+        "outlook_30_90": "Given the current stalemate and both sides' declared preference for attrition over decisive offensives, expect continued gradual, small territorial shifts alongside intensified drone/infrastructure strikes on both sides. A drone/counter-drone arms race is now visibly underway -- Russia's ~3,000/month jet-powered drone production against Ukraine's newly fielded interceptor systems -- worth tracking as a distinct dynamic. No credible near-term ceasefire process is currently underway; watch for any renewed diplomatic initiative tied to broader US-Russia dynamics.",
         "escalation_triggers": [
             "A Ukrainian strike killing a large number of Russian civilians, prompting disproportionate retaliation",
             "A Russian strike directly hitting NATO territory or personnel (distinct from the ongoing drone-incursion pattern)",
             "A major battlefield collapse on either side altering the current attritional balance",
+            "The shift from episodic strikes to sustained multi-night bombardment campaigns (the 'sixth straight night' Kyiv pattern) becoming the new normal operating tempo rather than a temporary surge",
         ],
         "early_warning_indicators": [
             "DeepState/ISW front-line territorial-change data (currently near-static, watch for acceleration)",
@@ -430,7 +455,7 @@ CONFLICTS = {
             "shipping": "Kerch Strait and Don-Azov Canal shipping suspended; Black Sea vessel strikes (including on Turkish-flagged ships) are raising insurance costs and diplomatic tension with Turkey",
             "migration": "Continued fighting sustains one of the largest refugee/displacement crises in Europe since WWII",
         },
-        "confidence_level": "Moderate to high for territorial/front-line data (DeepState OSINT and ISW are widely used, cross-referenced trackers), but attribution of specific incidents (e.g. which side's drones caused a given incursion) is sometimes genuinely disputed, as seen in the Baltic drone cases where Finnish officials suggested Russian jamming may have diverted Ukrainian drones off course.",
+        "confidence_level": "Moderate to high for territorial/front-line data (DeepState OSINT and ISW are widely used, cross-referenced trackers), but attribution of specific incidents (e.g. which side's drones caused a given incursion) is sometimes genuinely disputed, as seen in the Baltic drone cases where Finnish officials suggested Russian jamming may have diverted Ukrainian drones off course. The reported ~1.49 million Russian troop-loss figure circulating in Ukrainian sources is a Ukrainian government claim, not independently verified by a neutral body.",
         "strategic_chokepoints": ["turkish_straits"],
     },
 

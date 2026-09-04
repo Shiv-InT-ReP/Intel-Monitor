@@ -24,7 +24,9 @@ import requests
 
 API_URL = "https://api.anthropic.com/v1/messages"
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"
-MAX_ITEMS_PER_BATCH = 25  # keeps each request's output comfortably within max_tokens
+MAX_ITEMS_PER_BATCH = 12  # smaller than context_classifier's batches -- full-text translation
+                          # output is much larger per item than a short boolean/tag classification,
+                          # so smaller batches keep each individual API call fast and reliable
 
 
 def _build_prompt(items: list[dict]) -> str:
@@ -64,7 +66,9 @@ def _call_claude(prompt: str, api_key: str, model: str) -> str | None:
                 "max_tokens": 4000,
                 "messages": [{"role": "user", "content": prompt}],
             },
-            timeout=30,
+            timeout=90,  # translation of full article text is a heavier task than short
+                         # structured classification -- needs real headroom, not the 30s that
+                         # was timing out on 8 of 10 batches in production
         )
         resp.raise_for_status()
         data = resp.json()

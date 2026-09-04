@@ -77,10 +77,18 @@ Keyword matching is naive and produces false positives from ambiguous words -- e
 matching a Boy Scout troop (not military), "curfew" matching a parental curfew (not a security \
 state of emergency), "crackdown" on jaywalking (not political unrest). For each listed candidate \
 tag, decide whether it's GENUINELY accurate for this headline, and return only the ones that are. \
-Possible tags: "security" (genuine military/security threat), "protest" (genuine political \
-protest/unrest), "disaster" (genuine natural disaster), "sloc" (genuine maritime/shipping security \
-threat), "defence" (genuine military deployment/deal/exercise). Never add a tag that wasn't in the \
-candidate list, even if you think it should apply -- only confirm or reject what was already matched.
+Possible tags: "security" (genuine military/security THREAT -- an attack, strike, or act of \
+violence actually happening), "protest" (genuine political protest/unrest), "disaster" (genuine \
+natural disaster), "sloc" (genuine maritime/shipping security threat), "defence" (genuine military \
+deployment, procurement/deal, or exercise -- NOT a threat, an acquisition or capability-building \
+story). In general, never add a tag that wasn't in the candidate list, even if you think it should \
+apply -- only confirm or reject what was already matched. ONE NARROW EXCEPTION: if "security" is a \
+candidate tag ONLY because the headline mentions a weapon system being bought/sold/deployed \
+(a deal, procurement, export, delivery) rather than actually used in an attack -- e.g. "Javelin \
+deal to boost India-US defence ties" mentions "missile" only because the Javelin is a missile \
+system being purchased, not fired -- then you MAY add "defence" even if it wasn't a listed \
+candidate, and you should NOT confirm "security" for that item. This exception applies ONLY to \
+this specific security-vs-defence distinction, never to any other tag.
 
 (D) CORRECT_REGION: some headlines list multiple mentioned regions/countries. A naive matcher just \
 picks whichever region happened to be mentioned first in the text -- which is often WRONG. E.g. \
@@ -113,10 +121,12 @@ Headlines:
 {numbered}
 
 Respond with ONLY a JSON array of {len(items)} objects, each with "relevant" (boolean), "domain" \
-(either "conflict" or "disaster"), "confirmed_tags" (array of strings, the subset of that item's \
-candidate tags that are genuinely accurate -- empty array if none, or if no candidates were \
-listed), and "correct_region" (string, the single correct region -- see rule D above; use the \
-item's own listed candidate region(s) if there's only one, or if not applicable). No other text.
+(either "conflict" or "disaster"), "confirmed_tags" (array of strings -- normally the subset of \
+that item's candidate tags that are genuinely accurate, empty array if none or if no candidates \
+were listed; the ONE exception is the security-vs-defence swap described in rule C, where \
+"defence" may appear even if it wasn't an original candidate), and "correct_region" (string, the \
+single correct region -- see rule D above; use the item's own listed candidate region(s) if \
+there's only one, or if not applicable). No other text.
 Example format: [{{"relevant": true, "domain": "conflict", "confirmed_tags": ["security"], "correct_region": "Iran"}}, \
 {{"relevant": false, "domain": "conflict", "confirmed_tags": [], "correct_region": "Egypt"}}]"""
 

@@ -20,9 +20,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from core.db import init_db, is_seen, mark_seen, get_recent_items_for_confidence_scoring, update_confidence_bulk, get_prior_related_count, get_items_needing_verification, apply_gdelt_verification, set_video_summary, set_item_domain, remove_event_tag, set_item_region
+from core.db import init_db, is_seen, mark_seen, get_recent_items_for_confidence_scoring, update_confidence_bulk, get_prior_related_count, get_items_needing_verification, apply_gdelt_verification, set_video_summary, set_item_domain, remove_event_tag, set_item_region, add_event_tag
 from core.matcher import get_matcher, build_region_only_matcher
-from core import severity, confidence, ai_dedup, geocoding, event_tags, youtube_transcript, context_classifier, video_summarizer
+from core import severity, confidence, ai_dedup, geocoding, event_tags, youtube_transcript, context_classifier, video_summarizer, vernacular_translator
 from collectors import rss_collector, reddit_collector, telegram_collector, acled_collector, usgs_collector, gdelt_collector
 from notifier import email_notifier
 from dashboard.dashboard_generator import generate_dashboard
@@ -164,6 +164,36 @@ def run():
         config["telegram"], lookback_hours=config.get("lookback_hours_first_run", 24)
     )
 
+    # --- Vernacular-language sources (Tamil/Hindi/Malayalam) -- translated
+    # to English before matching, since the entire region+keyword matcher
+    # is English-only. Only NEW items get translated (no point spending API
+    # calls on items we've already processed in a prior run).
+    vernacular_feeds = config.get("vernacular_rss_feeds", [])
+    if vernacular_feeds:
+        print("[*] Fetching vernacular-language feeds...")
+        vernacular_items = rss_collector.collect(vernacular_feeds)
+        print(f"[*] Fetched {len(vernacular_items)} total vernacular-language items.")
+        new_vernacular_items = [item for item in vernacular_items if not is_seen(item["item_id"])]
+
+        ai_config_for_translation = config.get("ai_dedup", {})
+        if new_vernacular_items and ai_config_for_translation.get("enabled") and ai_config_for_translation.get("api_key"):
+            translations = vernacular_translator.translate_batch(new_vernacular_items, ai_config_for_translation)
+            translated_count = 0
+            for item in new_vernacular_items:
+                translation = translations.get(item["item_id"])
+                if translation:
+                    item["_original_title"] = item["title"]  # preserved for display/transparency
+                    item["title"] = translation["title"]
+                    item["text_for_matching"] = translation["full_text"]
+                    geo_items.append(item)
+                    translated_count += 1
+                # items that failed to translate this run are silently skipped --
+                # NOT marked seen, so they'll simply be retried on the next run
+            print(f"[*] Translated {translated_count} of {len(new_vernacular_items)} new vernacular item(s) for matching.")
+        elif new_vernacular_items:
+            print(f"  [!] {len(new_vernacular_items)} new vernacular item(s) found but AI translation isn't "
+                  f"configured -- they'll be skipped until ai_dedup is enabled with an api_key.")
+
     print(f"[*] Fetched {len(geo_items)} total geopolitical items.")
     new_geo_matches = _process_items(geo_items, geo_matcher, category="geopolitical", regions=config["regions"],
                                       geocoding_enabled=config.get("geocoding", {}).get("enabled", False))
@@ -183,6 +213,7 @@ def run():
             filtered_count = 0
             corrected_domain_count = 0
             rejected_tags_count = 0
+            reclassified_tags_count = 0
             corrected_region_count = 0
             new_geo_matches_after_context = []
             for item in new_geo_matches:
@@ -226,6 +257,17 @@ def run():
                         if remove_event_tag(item["item_id"], candidate):
                             rejected_tags_count += 1
 
+                # Add "defence" if the classifier reclassified a security
+                # candidate into it (the narrow security<->defence swap --
+                # e.g. "Javelin deal" matched "security" only because the
+                # Javelin is a missile system, but the story is about
+                # PROCUREMENT, not an attack). This is the one case where
+                # confirmed_tags can contain a tag that wasn't an original
+                # candidate -- see context_classifier.py's prompt rule C.
+                if "defence" in confirmed_tags and "defence" not in candidate_tags:
+                    if add_event_tag(item["item_id"], "defence"):
+                        reclassified_tags_count += 1
+
                 # Correct a wrong disaster-location region pick -- e.g. "Second
                 # Israeli confirmed missing in Nepal floods" wrongly pinned to
                 # Israel (a victim's nationality) instead of Nepal (the actual
@@ -244,6 +286,10 @@ def run():
             if rejected_tags_count:
                 print(f"[*] Context classifier rejected {rejected_tags_count} false-positive tag(s) "
                       f"(e.g. 'troop' matching a Boy Scout troop story under Defence).")
+            if reclassified_tags_count:
+                print(f"[*] Context classifier reclassified {reclassified_tags_count} item(s) from "
+                      f"Security to Defence (e.g. a weapons-deal story matched 'security' only "
+                      f"because of the weapon system's name, not an actual threat).")
             if corrected_region_count:
                 print(f"[*] Context classifier corrected {corrected_region_count} disaster-location region "
                       f"mismatch(es) (e.g. pinned to a victim's nationality instead of the actual disaster location).")

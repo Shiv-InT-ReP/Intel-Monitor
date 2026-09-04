@@ -28,10 +28,17 @@
   .mono { font-family: 'IBM Plex Mono', monospace; }
 
   header {
-    position: relative; padding: 24px 32px 18px;
+    /* Floats on top of the map instead of pushing it down -- see the
+       matching #map height change below. Semi-transparent background lets
+       the map show through rather than the header eating dedicated
+       vertical space for its title/legend content. */
+    position: absolute; top: 0; left: 0; right: 0; z-index: 1000;
+    padding: 24px 32px 18px;
     border-bottom: 1px solid var(--panel-border); overflow: hidden;
     display: flex; justify-content: space-between; align-items: flex-start;
     flex-wrap: wrap; gap: 16px;
+    background: rgba(11, 18, 32, 0.82); /* --bg (#0B1220) at 82% opacity, matches the theme exactly */
+    backdrop-filter: blur(3px);
   }
   header::after {
     content: ""; position: absolute; bottom: 0; left: -100%;
@@ -62,7 +69,10 @@
     border-bottom: 10px solid var(--text-muted);
   }
 
-  #map { height: calc(100vh - 108px); background: var(--bg); }
+  /* Full viewport height now that header floats on top rather than pushing
+     content down -- map.html's own JS may need to call map.invalidateSize()
+     if Leaflet doesn't automatically pick up this height change on load. */
+  #map { height: 100vh; background: var(--bg); }
 
   .leaflet-popup-content-wrapper {
     background: var(--panel); color: var(--text); border: 1px solid var(--panel-border);
@@ -115,11 +125,15 @@
   #errorBox { display: none; padding: 40px; color: var(--sev-moderate); font-family: 'IBM Plex Mono', monospace; }
 
   .time-controls {
-    padding: 10px 32px;
-    border-bottom: 1px solid var(--panel-border);
+    /* flex-basis: 100% forces this onto its own row within header's
+       flex-wrap layout, now that it's nested inside header rather than
+       a full-width standalone sibling. */
+    flex-basis: 100%;
+    padding: 10px 0 0;
     display: flex;
     gap: 10px;
     align-items: center;
+    flex-wrap: wrap;
   }
   .time-controls .label { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); font-family: 'IBM Plex Mono', monospace; margin-right: 4px; }
   .time-btn {
@@ -178,27 +192,30 @@
       </div>
     </div>
   </div>
-</header>
 
-<div class="time-controls" id="filterControls" title="Time window is filtered by each article's own published date, not when Intel Monitor captured it">
-  <span class="label">Filters</span>
-  <select id="timeFilterSelect" class="map-select">
-    <option value="30" selected>Published: last 30 days</option>
-    <option value="90">Published: last 90 days</option>
-    <option value="all">All time</option>
-  </select>
-  <select id="tagFilterSelect" class="map-select">
-    <option value="all" selected>All types</option>
-    <option value="security">Security Threats</option>
-    <option value="protest">Protests &amp; Unrest</option>
-    <option value="disaster">Natural Calamities</option>
-    <option value="sloc">Sea Lines of Communication</option>
-    <option value="iran_war">Iran War &amp; Gulf Region Alerts</option>
-    <option value="russia_ukraine_war">Russia-Ukraine War Alerts</option>
-    <option value="defence">Defence Alerts</option>
-  </select>
-  <span class="label" style="margin-left:8px;">Older signals fade automatically within the selected window</span>
-</div>
+  <div class="time-controls" id="filterControls" title="Time window is filtered by each article's own published date, not when Intel Monitor captured it">
+    <span class="label">Filters</span>
+    <select id="timeFilterSelect" class="map-select">
+      <option value="30" selected>Published: last 30 days</option>
+      <option value="90">Published: last 90 days</option>
+      <option value="all">All time</option>
+    </select>
+    <select id="tagFilterSelect" class="map-select">
+      <option value="all" selected>All types</option>
+      <option value="security">Security Threats</option>
+      <option value="protest">Protests &amp; Unrest</option>
+      <option value="disaster">Natural Calamities</option>
+      <option value="sloc">Sea Lines of Communication</option>
+      <option value="iran_war">Iran War &amp; Gulf Region Alerts</option>
+      <option value="russia_ukraine_war">Russia-Ukraine War Alerts</option>
+      <option value="defence">Defence Alerts</option>
+    </select>
+    <label class="map-select" style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;" title="Unverified (single-source) items are hidden by default -- a map pin reads as authoritative at a glance">
+      <input type="checkbox" id="unverifiedToggle"> Show Unverified
+    </label>
+    <span class="label" style="margin-left:8px;">Older signals fade automatically within the selected window</span>
+  </div>
+</header>
 
 <div id="map"></div>
 <div id="errorBox"></div>
@@ -232,7 +249,9 @@
     box.textContent = 'Map library failed to load. This page needs an internet connection. If you are online and still seeing this, an ad blocker or security extension may be blocking cdnjs.cloudflare.com — try disabling it for this page.';
   } else {
     const map = L.map('map', {
-      zoomControl: true,
+      // Zoom control moved off the default top-left position -- the header
+      // now floats there as an overlay and would otherwise cover it.
+      zoomControl: false,
       attributionControl: true,
       zoomSnap: 0.5,
       zoomDelta: 0.5,
@@ -245,6 +264,10 @@
       attribution: 'Tiles &copy; Esri',
       maxZoom: 16
     }).addTo(map);
+
+    // Re-added here instead of at the top-left default, since the header
+    // now floats there as a semi-transparent overlay.
+    L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
     let markerLayer = L.layerGroup().addTo(map);
 
@@ -516,6 +539,10 @@
 
     let currentDays = 30;
     let currentTag = 'all';
+    let currentShowUnverified = false;  // unverified (single-source) items hidden from the map by
+                                         // default -- a map pin reads as authoritative at a glance,
+                                         // so unconfirmed reports risk being mistaken for verified
+                                         // fact. Toggle reveals them for analysts who want the raw signal.
     function applyTimeFilter() {
       let filtered = SAMPLE_ITEMS;
       if (currentDays !== 'all') {
@@ -524,6 +551,9 @@
           const d = trueDate(i);
           return d && d.getTime() > cutoff;
         });
+      }
+      if (!currentShowUnverified) {
+        filtered = filtered.filter(i => (i.confidence_tier || 'unverified') !== 'unverified');
       }
       renderSlocThreatBlips(filtered);  // always keep threat blips in sync with the time window
 
@@ -548,6 +578,11 @@
     document.getElementById('tagFilterSelect').addEventListener('change', e => {
       currentTag = e.target.value;
       toggleSlocLayer(currentTag);
+      applyTimeFilter();
+    });
+
+    document.getElementById('unverifiedToggle').addEventListener('change', e => {
+      currentShowUnverified = e.target.checked;
       applyTimeFilter();
     });
 

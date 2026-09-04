@@ -33,6 +33,15 @@ SLOC_KEYWORDS = {
 DEFENCE_KEYWORDS = {
     "military drill", "patrol", "fighter jet", "troop", "combat readiness",
     "mobiliz", "airspace violation", "arms deal", "weapons transfer", "incursion",
+    # Procurement/deal terms added after the "Javelin deal" case -- a story
+    # about ACQUIRING a weapon system (defence procurement) is a
+    # fundamentally different kind of story than one about a weapon being
+    # USED (security threat), even though both mention the same hardware.
+    # Bare "deal" is deliberately excluded -- too generic, would false-positive
+    # on trade deals, political deals, etc. Only compound defence-specific
+    # phrases are included here.
+    "defence deal", "missile deal", "weapons deal", "defence pact",
+    "defence agreement", "defence exports", "procurement",
 }
 
 # The Iran War & Gulf Region tag covers the actual 2026 Iran war conflict

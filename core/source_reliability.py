@@ -57,6 +57,7 @@ STATE_FUNDED_INDEPENDENT = {
     "dw (deutsche welle)": "German public broadcaster, editorially independent by law",
     "rfa": "US-funded (USAGM) international broadcaster, editorial independence from US government",
     "rferl": "US-funded (USAGM) international broadcaster, editorial independence from US government",
+    "radio farda": "RFE/RL's Persian-language service -- same funding/independence model as RFA/RFE/RL above; documented history of Iranian government censorship attempts against it, evidence of genuine independence from Tehran",
 }
 
 # State-LINKED ownership (government owns the parent company via an

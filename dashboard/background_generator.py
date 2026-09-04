@@ -18,6 +18,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from data.conflict_backgrounds import get_all_conflicts
+from data.supply_chain_nodes import get_nodes_for_conflict, get_unlinked_nodes
 from core.db import get_dashboard_data
 
 OUTPUT_PATH = Path(__file__).resolve().parent.parent / "background.html"
@@ -37,17 +38,30 @@ def generate_background_page():
     all_items = get_dashboard_data()
 
     conflicts_with_activity = []
-    for conflict in conflicts.values():
+    for conflict_key, conflict in conflicts.items():
         conflict = dict(conflict)  # don't mutate the source data
         conflict["recent_activity"] = _get_recent_activity(conflict, all_items)
+        # Supply chain nodes linked to this specific conflict -- rendered as
+        # clickable stat-callouts within the card, superseding the old plain
+        # second_order_effects.supply_chains string (still present in the
+        # data for now, but excluded from rendering -- see the JS below).
+        conflict["supply_chain_nodes"] = get_nodes_for_conflict(conflict_key)
         conflicts_with_activity.append(conflict)
 
     data_json = json.dumps(conflicts_with_activity)
     data_json = data_json.replace("</script", "<\\/script").replace("</SCRIPT", "<\\/SCRIPT")
 
+    # Nodes that don't map onto any single tracked conflict (e.g. DRC cobalt,
+    # Indonesia nickel, India pharma) -- rendered in their own standalone
+    # section rather than forced into an unrelated dossier.
+    unlinked_json = json.dumps(get_unlinked_nodes())
+    unlinked_json = unlinked_json.replace("</script", "<\\/script").replace("</SCRIPT", "<\\/SCRIPT")
+
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-    html = HTML_TEMPLATE.replace("__DATA_JSON__", data_json).replace("__GENERATED__", generated_at)
+    html = HTML_TEMPLATE.replace("__DATA_JSON__", data_json)
+    html = html.replace("__UNLINKED_SUPPLY_CHAINS_JSON__", unlinked_json)
+    html = html.replace("__GENERATED__", generated_at)
     OUTPUT_PATH.write_text(html, encoding="utf-8")
     print(f"  [x] Background page updated: {OUTPUT_PATH} ({len(conflicts)} conflict(s))")
     return OUTPUT_PATH
@@ -228,7 +242,53 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .activity-meta { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-dim); margin-top: 2px; text-transform: uppercase; }
 
   footer { text-align: center; padding: 24px; color: var(--text-dim); font-size: 11px; font-family: 'IBM Plex Mono', monospace; }
+
+  /* ---- Supply chain stat-callouts + click-through modal ---- */
+  .supply-chain-section { margin-top: 18px; }
+  .supply-chain-callout {
+    display: block; width: 100%; text-align: left; cursor: pointer;
+    background: var(--amber-dim); border: 1px solid var(--panel-border);
+    border-left: 3px solid var(--amber); border-radius: 4px;
+    padding: 10px 14px; margin-bottom: 8px;
+    font-family: inherit; color: inherit;
+  }
+  .supply-chain-callout:hover { border-left-color: var(--text); background: rgba(232,163,61,0.22); }
+  .supply-chain-stat { font-weight: 700; color: var(--amber); font-size: 13px; }
+  .supply-chain-detail { color: var(--text-muted); font-size: 12px; margin-top: 3px; line-height: 1.5; }
+  .supply-chain-standalone-card {
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px;
+    padding: 16px 20px; margin-bottom: 16px;
+  }
+  .supply-chain-standalone-card h3 { margin: 0 0 10px; font-size: 15px; color: var(--text); }
+
+  .sc-modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(6,9,16,0.82);
+    z-index: 2000; align-items: center; justify-content: center; padding: 24px;
+  }
+  .sc-modal-overlay.open { display: flex; }
+  .sc-modal {
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px;
+    max-width: 760px; width: 100%; max-height: 88vh; overflow-y: auto;
+  }
+  .sc-modal-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 18px 22px; border-bottom: 1px solid var(--panel-border);
+  }
+  .sc-modal-header h2 { margin: 0; font-size: 17px; color: var(--text); }
+  .sc-modal-close { background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; padding: 0 4px; }
+  .sc-modal-close:hover { color: var(--text); }
+  .sc-modal-map { height: 260px; width: 100%; }
+  .sc-modal-body { padding: 18px 22px; }
+  .sc-chain-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: var(--text-dim); margin-bottom: 14px; font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; }
+  .sc-chain-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .sc-chain-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .sc-modal-field { margin-bottom: 14px; }
+  .sc-modal-field-label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin-bottom: 4px; }
+  .sc-modal-field-value { color: var(--text-muted); font-size: 13px; line-height: 1.6; }
+  .sc-modal-sources { font-size: 11px; color: var(--text-dim); margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--panel-border); }
 </style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 </head>
 <body>
 
@@ -247,10 +307,156 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <main id="conflicts"></main>
 
+<section class="supply-chain-section" style="max-width:900px;margin:0 auto;padding:0 24px;">
+  <h2 style="font-size:16px;color:var(--text);border-bottom:1px solid var(--panel-border);padding-bottom:10px;">
+    OTHER SUPPLY CHAIN DEPENDENCIES
+  </h2>
+  <p class="subtitle" style="margin-bottom:16px;">Critical dependencies that don't map onto a single tracked conflict above -- civilian and dual-use chokepoints worth monitoring on their own.</p>
+  <div id="otherSupplyChains"></div>
+</section>
+
+<div class="sc-modal-overlay" id="scModalOverlay" onclick="if(event.target===this) closeSupplyChainModal()">
+  <div class="sc-modal">
+    <div class="sc-modal-header">
+      <div>
+        <h2 id="scModalTitle"></h2>
+        <div class="conflict-meta" id="scModalReviewed" style="margin-top:6px;"></div>
+      </div>
+      <button class="sc-modal-close" onclick="closeSupplyChainModal()">&times;</button>
+    </div>
+    <div id="scModalMap" class="sc-modal-map"></div>
+    <div class="sc-modal-body">
+      <div class="sc-chain-legend" id="scModalLegend"></div>
+      <div class="sc-modal-field">
+        <div class="sc-modal-field-label">Why It Matters</div>
+        <div class="sc-modal-field-value" id="scModalWhyMatters"></div>
+      </div>
+      <div class="sc-modal-field">
+        <div class="sc-modal-field-label">Alternative Suppliers</div>
+        <div class="sc-modal-field-value" id="scModalAlternatives"></div>
+      </div>
+      <div class="sc-modal-field">
+        <div class="sc-modal-field-label">Current Status</div>
+        <div class="sc-modal-field-value" id="scModalStatus"></div>
+      </div>
+      <div class="sc-modal-sources" id="scModalSources"></div>
+    </div>
+  </div>
+</div>
+
 <footer>Intel Monitor — Conflict Background</footer>
 
 <script>
   const CONFLICTS = __DATA_JSON__;
+  const UNLINKED_SUPPLY_CHAINS = __UNLINKED_SUPPLY_CHAINS_JSON__;
+
+  // Global lookup so the modal can find any linked node by ID regardless of
+  // which conflict card it was clicked from.
+  const SUPPLY_CHAIN_NODE_LOOKUP = {};
+  CONFLICTS.forEach(c => (c.supply_chain_nodes || []).forEach(n => { SUPPLY_CHAIN_NODE_LOOKUP[n.node_id] = n; }));
+  // The 3 unlinked nodes also get the full clickable map treatment -- they
+  // already carry real multi-location chain_nodes data (e.g. DRC -> China ->
+  // Global markets), so there's no reason to withhold the interactive view
+  // just because they don't tie to one specific tracked conflict.
+  UNLINKED_SUPPLY_CHAINS.forEach(n => { SUPPLY_CHAIN_NODE_LOOKUP[n.node_id] = n; });
+
+  const ROLE_COLORS = {
+    'Mining': '#E8703D', 'Mining/Processing': '#E8703D', 'Production': '#E8703D',
+    'Production/Source': '#E8703D', 'Historic Production': '#7C89A6',
+    'Processing': '#E8A33D', 'Manufacturing': '#E8A33D', 'Component Manufacturing': '#E8A33D',
+    'Formulation/Manufacturing': '#E8A33D', 'Design Tools Origin': '#E8A33D',
+    'Consumer': '#3D7FE8', 'Destination': '#3D7FE8', 'Restricted Destination': '#3D7FE8',
+  };
+  function roleColor(role) { return ROLE_COLORS[role] || '#7C89A6'; }
+
+  let scLeafletMap = null;
+
+  function openSupplyChainModal(nodeId) {
+    const node = SUPPLY_CHAIN_NODE_LOOKUP[nodeId];
+    if (!node) return;
+
+    document.getElementById('scModalTitle').textContent = node.name;
+
+    // Same 14-day staleness pattern already used for conflict dossiers --
+    // this data is manually researched/reviewed, not auto-updated, so it's
+    // worth flagging when it's due for a refresh.
+    const reviewedEl = document.getElementById('scModalReviewed');
+    if (node.last_reviewed) {
+      const reviewedDate = new Date(node.last_reviewed);
+      const daysSince = Math.floor((Date.now() - reviewedDate.getTime()) / (1000 * 60 * 60 * 24));
+      const isStale = daysSince > 14;
+      reviewedEl.style.color = isStale ? 'var(--red)' : '';
+      reviewedEl.textContent = `LAST REVIEWED ${node.last_reviewed} (${daysSince}d ago)`
+        + (isStale ? ' — consider refreshing given new developments' : '');
+    } else {
+      reviewedEl.textContent = '';
+    }
+    document.getElementById('scModalWhyMatters').textContent = node.why_it_matters || '';
+    document.getElementById('scModalAlternatives').textContent = node.alternative_suppliers || '';
+    document.getElementById('scModalStatus').textContent = node.current_status || '';
+    document.getElementById('scModalSources').textContent = (node.sources || []).length
+      ? 'Sources: ' + node.sources.join(' · ') : '';
+
+    const legend = (node.chain_nodes || []).map(cn =>
+      `<span><span class="sc-chain-dot" style="background:${roleColor(cn.role)}"></span>${cn.role}</span>`
+    );
+    // de-duplicate legend entries with the same role
+    const seenRoles = new Set();
+    document.getElementById('scModalLegend').innerHTML = legend.filter(entry => {
+      const role = entry.match(/>([^<]+)<\/span>$/)[1];
+      if (seenRoles.has(role)) return false;
+      seenRoles.add(role);
+      return true;
+    }).join('');
+
+    document.getElementById('scModalOverlay').classList.add('open');
+
+    // Leaflet needs the container visible before init, and a fresh map
+    // instance each open -- simplest reliable approach for a modal that
+    // shows different data every time it opens.
+    setTimeout(() => {
+      if (scLeafletMap) { scLeafletMap.remove(); scLeafletMap = null; }
+      const mapDiv = document.getElementById('scModalMap');
+      scLeafletMap = L.map(mapDiv, { zoomControl: true, attributionControl: false });
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 8
+      }).addTo(scLeafletMap);
+
+      const points = [];
+      (node.chain_nodes || []).forEach(cn => {
+        const color = roleColor(cn.role);
+        L.circleMarker([cn.lat, cn.lon], {
+          radius: 8, color: color, fillColor: color, fillOpacity: 0.85, weight: 2
+        }).addTo(scLeafletMap).bindTooltip(`${cn.name} (${cn.role})`, { permanent: false });
+        points.push([cn.lat, cn.lon]);
+      });
+      if (points.length > 1) {
+        L.polyline(points, { color: '#7C89A6', weight: 1.5, dashArray: '4,5', opacity: 0.6 }).addTo(scLeafletMap);
+      }
+      if (points.length > 0) {
+        scLeafletMap.fitBounds(points, { padding: [30, 30], maxZoom: 5 });
+      }
+    }, 50);
+  }
+
+  function closeSupplyChainModal() {
+    document.getElementById('scModalOverlay').classList.remove('open');
+  }
+
+  function renderOtherSupplyChains() {
+    const container = document.getElementById('otherSupplyChains');
+    container.innerHTML = UNLINKED_SUPPLY_CHAINS.map(node => `
+      <div class="supply-chain-standalone-card">
+        <h3>${node.name}</h3>
+        ${(node.stat_callouts || []).map(sc => `
+          <button class="supply-chain-callout" onclick="openSupplyChainModal('${node.node_id}')">
+            <div class="supply-chain-stat">${sc.stat}</div>
+            <div class="supply-chain-detail">${sc.detail}</div>
+          </button>
+        `).join('')}
+      </div>
+    `).join('');
+  }
 
   function renderConflicts() {
     const container = document.getElementById('conflicts');
@@ -318,7 +524,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       let whyMatters = '';
       if (c.regional_linkages) whyMatters += `<div class="analysis-text"><strong style="color:var(--text);">Regional linkages:</strong> ${c.regional_linkages}</div>`;
       if (c.second_order_effects) {
-        const items = Object.entries(c.second_order_effects).map(([k, v]) => `
+        // "supply_chains" is deliberately excluded here -- it's superseded
+        // by the richer, clickable stat-callout rendering below, which
+        // pulls from supply_chain_nodes.py instead of this plain string.
+        const items = Object.entries(c.second_order_effects)
+          .filter(([k]) => k !== 'supply_chains')
+          .map(([k, v]) => `
           <div class="second-order-item">
             <div class="second-order-label">${k.replace(/_/g, ' ')}</div>
             <div class="second-order-value">${v}</div>
@@ -328,6 +539,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
       const whyMattersHtml = whyMatters
         ? `<div class="analysis-section"><div class="analysis-heading">Why It Matters — Second-Order Effects</div>${whyMatters}</div>`
+        : '';
+
+      const supplyChainHtml = (c.supply_chain_nodes && c.supply_chain_nodes.length > 0)
+        ? `<div class="analysis-section"><div class="analysis-heading">Supply Chain Dependencies</div>
+            ${c.supply_chain_nodes.map(node => `
+              ${node.stat_callouts.map(sc => `
+                <button class="supply-chain-callout" onclick="openSupplyChainModal('${node.node_id}')">
+                  <div class="supply-chain-stat">${sc.stat}</div>
+                  <div class="supply-chain-detail">${sc.detail}</div>
+                </button>
+              `).join('')}
+            `).join('')}
+          </div>`
         : '';
 
       const outlookHtml = c.outlook_30_90
@@ -387,6 +611,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           ${extrasHtml}
           ${actorsHtml}
           ${whyMattersHtml}
+          ${supplyChainHtml}
           ${outlookHtml}
           ${watchSectionHtml}
           ${confidenceHtml}
@@ -397,6 +622,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   renderConflicts();
+  renderOtherSupplyChains();
 </script>
 
 </body>
